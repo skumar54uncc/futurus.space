@@ -1,0 +1,13 @@
+{
+  "name": "Standard Simulation Report",
+  "version": "1.0",
+  "sections": [
+    {"id": "summary", "title": "Executive Summary", "type": "metrics_grid", "fields": ["adoption_rate", "churn_rate", "viral_coefficient", "confidence_score"]},
+    {"id": "adoption_curve", "title": "Adoption Curve", "type": "line_chart", "data_key": "adoption_curve"},
+    {"id": "persona_breakdown", "title": "Customer Segment Analysis", "type": "table", "data_key": "persona_breakdown"},
+    {"id": "failure_timeline", "title": "Critical Failure Points", "type": "timeline", "data_key": "failure_timeline"},
+    {"id": "risk_matrix", "title": "Risk Assessment", "type": "heatmap", "data_key": "risk_matrix"},
+    {"id": "pivot_suggestions", "title": "Recommended Pivots", "type": "card_list", "data_key": "pivot_suggestions"},
+    {"id": "key_insights", "title": "Key Insights", "type": "card_list", "data_key": "key_insights"}
+  ]
+}

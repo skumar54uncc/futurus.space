@@ -1,0 +1,13 @@
+{
+  "name": "Investor-Ready Report",
+  "version": "1.0",
+  "sections": [
+    {"id": "tldr", "title": "TL;DR", "type": "text", "prompt": "One paragraph summary of viability."},
+    {"id": "market_validation", "title": "Market Validation Score", "type": "score_card", "fields": ["adoption_rate", "viral_coefficient", "confidence_score"]},
+    {"id": "unit_economics", "title": "Projected Unit Economics", "type": "metrics_grid", "fields": ["ltv_estimate", "cac_estimate", "payback_months"]},
+    {"id": "adoption_curve", "title": "Growth Trajectory", "type": "line_chart", "data_key": "adoption_curve"},
+    {"id": "risks", "title": "Key Risks & Mitigations", "type": "table", "data_key": "risk_matrix", "max_items": 5},
+    {"id": "competitive_moat", "title": "Competitive Position", "type": "text", "prompt": "Based on simulation, describe defensibility."},
+    {"id": "recommendation", "title": "Investment Recommendation", "type": "text", "prompt": "Clear recommendation with confidence level."}
+  ]
+}

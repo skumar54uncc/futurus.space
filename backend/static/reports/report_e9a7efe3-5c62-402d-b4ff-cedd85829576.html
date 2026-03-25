@@ -1,0 +1,235 @@
+
+<!DOCTYPE html>
+<html>
+<head><style>
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; color: #1a1a1a; font-size: 14px; }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  h2 { font-size: 18px; color: #4a4a4a; margin-top: 32px; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+  .metric { display: inline-block; margin: 8px 16px 8px 0; padding: 12px 20px; background: #f5f5f5; border-radius: 8px; }
+  .metric .value { font-size: 28px; font-weight: 600; }
+  .metric .label { font-size: 12px; color: #666; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; }
+  th { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
+  .risk-high { color: #dc2626; font-weight: 600; }
+  .risk-medium { color: #f59e0b; }
+  .risk-low { color: #16a34a; }
+  .card { margin-bottom: 16px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #eee; }
+  .card-title { font-weight: 600; font-size: 15px; }
+  .card-sub { font-size: 13px; color: #666; margin-top: 4px; }
+  .card-action { font-size: 13px; color: #2563eb; margin-top: 4px; }
+  .disclaimer { margin-top: 40px; padding: 16px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; font-size: 12px; color: #92400e; }
+</style></head>
+<body>
+  <h1>SamosaHub — Simulation Report</h1>
+  <p style="color: #666;">A student organization selling samosas to students at UNC Charlotte during various events. The organization aims to provide a convenient and affordable snack option to students. By leveraging events, they can reach a large audience and create a loyal customer base.</p>
+
+  <h2>Key Metrics</h2>
+  <div>
+    <div class="metric"><div class="value">44.6%</div><div class="label">Adoption Rate</div></div>
+    <div class="metric"><div class="value">39.3%</div><div class="label">Churn Rate</div></div>
+    <div class="metric"><div class="value">446</div><div class="label">Total Adopters</div></div>
+    <div class="metric"><div class="value">0.59</div><div class="label">Viral Coefficient</div></div>
+    <div class="metric"><div class="value">87%</div><div class="label">Confidence Score</div></div>
+  </div>
+
+  <h2>Customer Segment Analysis</h2>
+  <table>
+    <tr><th>Segment</th><th>Adoption</th><th>Churn</th><th>Referrals</th></tr>
+    
+    <tr>
+      <td><strong>International Students (20-25) at UNC Charlotte</strong></td>
+      <td>33.9%</td>
+      <td>38.0%</td>
+      <td>60</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Student-Athletes (19-23) at UNC Charlotte</strong></td>
+      <td>33.4%</td>
+      <td>40.2%</td>
+      <td>109</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Graduate Students (22-25) at UNC Charlotte</strong></td>
+      <td>37.8%</td>
+      <td>17.6%</td>
+      <td>30</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Skeptical Upperclassmen (20-22) at UNC Charlotte</strong></td>
+      <td>35.3%</td>
+      <td>51.2%</td>
+      <td>11</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Busy Pre-Med Students (19-23) at UNC Charlotte</strong></td>
+      <td>39.2%</td>
+      <td>39.3%</td>
+      <td>36</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Health-Conscious Students (18-22) at UNC Charlotte</strong></td>
+      <td>38.6%</td>
+      <td>31.2%</td>
+      <td>18</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Budget-Constrained Students (18-22) at UNC Charlotte</strong></td>
+      <td>37.5%</td>
+      <td>66.7%</td>
+      <td>2</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Samosa Skeptics (19-24) at UNC Charlotte</strong></td>
+      <td>36.7%</td>
+      <td>42.6%</td>
+      <td>25</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Freshmen (18-19) at UNC Charlotte</strong></td>
+      <td>42.7%</td>
+      <td>44.2%</td>
+      <td>88</td>
+    </tr>
+    
+    <tr>
+      <td><strong>International Graduate Students (23-25) at UNC Charlotte</strong></td>
+      <td>35.8%</td>
+      <td>47.1%</td>
+      <td>23</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Uninterested Commuters (19-24) at UNC Charlotte</strong></td>
+      <td>35.7%</td>
+      <td>26.7%</td>
+      <td>5</td>
+    </tr>
+    
+    <tr>
+      <td><strong>Foodie Students (19-23) at UNC Charlotte</strong></td>
+      <td>33.9%</td>
+      <td>0.0%</td>
+      <td>27</td>
+    </tr>
+    
+  </table>
+
+  <h2>Risk Assessment</h2>
+  <table>
+    <tr><th>Risk</th><th>Probability</th><th>Impact</th><th>Mitigation</th></tr>
+    
+    <tr>
+      <td>Competition from UNC Charlotte Dining Services</td>
+      <td class="risk-high">high</td>
+      <td class="risk-high">high</td>
+      <td>Develop a unique selling proposition (USP) that differentiates SamosaHub from competitors, such as offering a variety of international flavors</td>
+    </tr>
+    
+    <tr>
+      <td>Food safety and quality control</td>
+      <td class="risk-medium">medium</td>
+      <td class="risk-critical">critical</td>
+      <td>Implement a rigorous quality control process, including regular inspections and staff training, to ensure high food safety standards</td>
+    </tr>
+    
+    <tr>
+      <td>Dependence on student events and gatherings</td>
+      <td class="risk-medium">medium</td>
+      <td class="risk-medium">medium</td>
+      <td>Diversify revenue streams by exploring partnerships with local businesses, catering services, or online ordering and delivery options</td>
+    </tr>
+    
+    <tr>
+      <td>Seasonal fluctuations in demand</td>
+      <td class="risk-high">high</td>
+      <td class="risk-medium">medium</td>
+      <td>Develop a seasonal menu and pricing strategy to adapt to changing demand, such as offering discounts or promotions during slow periods</td>
+    </tr>
+    
+    <tr>
+      <td>Negative word-of-mouth and online reviews</td>
+      <td class="risk-medium">medium</td>
+      <td class="risk-high">high</td>
+      <td>Implement a customer feedback system to promptly address concerns and improve overall customer satisfaction, and encourage positive reviews through loyalty programs or incentives</td>
+    </tr>
+    
+  </table>
+
+  <h2>Key Insights</h2>
+  
+  <div class="card">
+    <div class="card-title">The average food truck failure rate is around 60% in the first year, and SamosaHub's 39.3% churn rate is slightly below this industry average</div>
+    <div class="card-sub">Industry statistics and simulation data</div>
+    <div class="card-action">Action: Continue to monitor and address customer concerns to maintain a competitive edge</div>
+  </div>
+  
+  <div class="card">
+    <div class="card-title">The simulation data shows a high adoption rate among International Students (20-25) at UNC Charlotte, indicating a potential market for international flavors and cuisine</div>
+    <div class="card-sub">Simulation data and industry trends</div>
+    <div class="card-action">Action: Consider expanding the menu to include more international options to cater to this demographic</div>
+  </div>
+  
+  <div class="card">
+    <div class="card-title">The high rejection rate from Budget-Constrained Students (18-22) at UNC Charlotte indicates a need for more affordable pricing options</div>
+    <div class="card-sub">Simulation data and industry trends</div>
+    <div class="card-action">Action: Consider offering discounts, promotions, or value meals to attract price-sensitive customers</div>
+  </div>
+  
+  <div class="card">
+    <div class="card-title">The success of loyalty programs in the food industry, such as Starbucks' Rewards program, indicates a potential for increasing customer retention and loyalty</div>
+    <div class="card-sub">Industry statistics and simulation data</div>
+    <div class="card-action">Action: Consider implementing a loyalty program or rewards scheme to incentivize repeat business</div>
+  </div>
+  
+  <div class="card">
+    <div class="card-title">The growing demand for plant-based and gluten-free options in the food industry indicates a potential market for healthier options</div>
+    <div class="card-sub">Industry trends and simulation data</div>
+    <div class="card-action">Action: Consider expanding the menu to include vegetarian, vegan, and gluten-free options to cater to this demographic</div>
+  </div>
+  
+
+  <h2>Pivot Suggestions</h2>
+  
+  <div class="card">
+    <div class="card-title">Offering a loyalty program or rewards scheme</div>
+    <div class="card-sub">Similar to the successful loyalty programs implemented by coffee shops and restaurants, such as Starbucks' Rewards program, which has been shown to increase customer retention and loyalty</div>
+    <div class="card-sub">Evidence: The simulation data shows a high adoption rate among Freshmen (18-19) at UNC Charlotte, indicating a potential for loyalty and retention</div>
+    <div style="font-size: 12px; color: #666; margin-top: 4px;">Confidence: medium</div>
+  </div>
+  
+  <div class="card">
+    <div class="card-title">Expanding the menu to include vegetarian, vegan, and gluten-free options</div>
+    <div class="card-sub">The growing demand for plant-based and gluten-free options, as seen in the success of restaurants like Chipotle and Panera Bread, which have incorporated these options into their menus</div>
+    <div class="card-sub">Evidence: The simulation data shows a high rejection rate from Health-Conscious Students (18-22) at UNC Charlotte, indicating a potential market for healthier options</div>
+    <div style="font-size: 12px; color: #666; margin-top: 4px;">Confidence: high</div>
+  </div>
+  
+  <div class="card">
+    <div class="card-title">Partnering with local businesses to offer catering services</div>
+    <div class="card-sub">The success of catering services offered by restaurants like Jason's Deli, which have expanded their revenue streams through partnerships with local businesses</div>
+    <div class="card-sub">Evidence: The simulation data shows a high adoption rate among Student-Athletes (19-23) at UNC Charlotte, indicating a potential market for catering services</div>
+    <div style="font-size: 12px; color: #666; margin-top: 4px;">Confidence: medium</div>
+  </div>
+  
+
+  <div class="disclaimer">
+    <strong>About this report:</strong> This simulation uses AI agents to model potential customer behavior.
+    Results are directional estimates, not guarantees. The confidence score (87%)
+    reflects internal simulation consistency, not real-world prediction accuracy.
+    Use these insights to inform your decisions alongside real customer research.
+  </div>
+
+  <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; font-size: 11px; color: #999;">
+    Generated by Futurus | AI-Powered Market Simulation
+  </div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "futurus",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_BACKEND_URL": "@futurus_backend_url",
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "@clerk_publishable_key"
+  }
+}
