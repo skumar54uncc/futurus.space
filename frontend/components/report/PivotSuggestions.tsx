@@ -37,9 +37,9 @@ export function PivotSuggestions({ suggestions, insights }: Props) {
     <div className="space-y-6">
       {suggestions && suggestions.length > 0 && (
         <div className="border border-[--border-subtle] rounded-xl p-6 bg-[--bg-surface]/50">
-          <h2 className="text-base font-medium mb-1 text-[--text-primary]">Recommended pivots</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            AI-generated strategic adjustments based on simulation results
+          <h2 className="text-xl font-semibold mb-1 text-[--text-primary]">Recommended pivots</h2>
+          <p className="text-sm text-[--text-tertiary] mb-6">
+            Strategic adjustments based on how your simulated customers actually behaved
           </p>
           <div className="space-y-4">
             {suggestions.map((s, i) => (
@@ -83,8 +83,8 @@ export function PivotSuggestions({ suggestions, insights }: Props) {
 
       {insights && insights.length > 0 && (
         <div className="border border-[--border-subtle] rounded-xl p-6 bg-[--bg-surface]/50">
-          <h2 className="text-base font-medium mb-1 text-[--text-primary]">Key insights</h2>
-          <p className="text-sm text-muted-foreground mb-4">Actionable takeaways from the simulation</p>
+          <h2 className="text-xl font-semibold mb-1 text-[--text-primary]">Key insights</h2>
+          <p className="text-sm text-[--text-tertiary] mb-6">The most important takeaways from your simulation — prioritize these</p>
           <div className="space-y-3">
             {insights.map((insight, i) => (
               <div key={i} className="flex gap-3 border-b border-[--border-subtle] last:border-0 pb-3 last:pb-0">
