@@ -36,7 +36,8 @@ function cardIdeaExcerpt(raw: string): string {
     .replace(/\s*---+(\s*|$)/g, " · ")
     .replace(/\s*·\s*(?:·\s*)+/g, " · ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .replace(/[\s·—–-]+$/, "");
 }
 
 /** Ensure UUID string for API paths (avoids 404 from malformed IDs). */
@@ -176,7 +177,7 @@ export function SimulationCard({ sim, onDeleted, onUpdated }: SimulationCardProp
           <StatusRow sim={sim} />
         </div>
 
-        <p className="text-xs text-[--text-secondary] mb-2 line-clamp-2 leading-snug min-h-[2.5rem]">
+        <p className="text-xs text-[--text-secondary] mb-3 line-clamp-2 leading-relaxed min-h-[2.5rem]">
           {cardIdeaExcerpt(sim.idea_description)}
         </p>
         <p className="text-xs text-[--text-tertiary] mb-3 shrink-0">
