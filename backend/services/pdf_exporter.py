@@ -21,187 +21,420 @@ REPORT_HTML_TEMPLATE = """
 <head>
   <meta charset="utf-8" />
   <style>
-    /* Note: no @page rules here — xhtml2pdf (Windows fallback) does not support them. */
     * { box-sizing: border-box; }
     body {
       font-family: Helvetica, Arial, sans-serif;
       padding: 0;
       margin: 0;
-      color: #1a1a1a;
-      font-size: 13px;
-      line-height: 1.45;
-      position: relative;
+      color: #0f172a;
+      font-size: 12.5px;
+      line-height: 1.5;
+      background: #ffffff;
     }
+
+    /* ── Fixed page header (repeats on every page) ── */
+    .page-header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 52px;
+      background: #1e1b4b;
+      padding: 0 28px;
+    }
+    .page-header-inner {
+      display: inline-block;
+      width: 100%;
+    }
+    .page-header-logo {
+      display: inline-block;
+      vertical-align: middle;
+      margin-top: 10px;
+    }
+    .logo-mark {
+      display: inline-block;
+      vertical-align: middle;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(129,140,248,0.7);
+      margin-right: 8px;
+      text-align: center;
+      line-height: 18px;
+    }
+    .logo-mark-inner {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #818cf8;
+      vertical-align: middle;
+      margin-top: -2px;
+    }
+    .logo-wordmark {
+      display: inline-block;
+      vertical-align: middle;
+      font-size: 18px;
+      font-style: italic;
+      font-weight: 400;
+      color: #f8fafc;
+      letter-spacing: -0.01em;
+    }
+    .page-header-tagline {
+      display: inline-block;
+      vertical-align: middle;
+      float: right;
+      margin-top: 17px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Fixed page footer (repeats on every page) ── */
+    .page-footer {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 36px;
+      background: #1e1b4b;
+      padding: 9px 28px;
+    }
+    .page-footer-left {
+      display: inline-block;
+      font-size: 9px;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 0.05em;
+    }
+    .page-footer-right {
+      display: inline-block;
+      float: right;
+      font-size: 9px;
+      color: rgba(255,255,255,0.35);
+      font-style: italic;
+    }
+
+    /* ── Main content area (accounts for fixed header/footer) ── */
+    .content {
+      margin-top: 68px;
+      margin-bottom: 48px;
+      padding: 0 28px;
+    }
+
+    /* ── Hero cover block ── */
+    .cover-block {
+      background: #1e1b4b;
+      border-radius: 12px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+      color: #fff;
+    }
+    .cover-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #818cf8;
+      margin-bottom: 10px;
+    }
+    .cover-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #f8fafc;
+      margin: 0 0 8px 0;
+      line-height: 1.25;
+    }
+    .cover-idea {
+      font-size: 12px;
+      color: rgba(255,255,255,0.55);
+      margin: 0;
+      line-height: 1.6;
+    }
+    .cover-badge {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 4px 12px;
+      background: rgba(99,102,241,0.2);
+      border: 1px solid rgba(99,102,241,0.4);
+      border-radius: 100px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #a5b4fc;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* ── Section headings ── */
+    h2 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #312e81;
+      margin: 28px 0 12px 0;
+      padding-bottom: 6px;
+      border-bottom: 1.5px solid #e0e7ff;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Metrics grid ── */
+    .metric-row { margin-bottom: 8px; }
+    .metric {
+      display: inline-block;
+      margin: 0 10px 10px 0;
+      padding: 12px 16px;
+      background: #f5f3ff;
+      border: 1.5px solid #ddd6fe;
+      border-radius: 10px;
+      vertical-align: top;
+      min-width: 95px;
+    }
+    .metric .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #4338ca;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .metric .label {
+      font-size: 9.5px;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+    .metric-highlight .value { color: #16a34a; }
+    .metric-warn .value { color: #d97706; }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+      font-size: 11.5px;
+    }
+    thead tr { background: #1e1b4b; }
+    thead th {
+      text-align: left;
+      padding: 8px 10px;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a5b4fc;
+      border: none;
+    }
+    tbody tr:nth-child(even) { background: #f8f7ff; }
+    tbody tr:nth-child(odd) { background: #ffffff; }
+    tbody td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #ede9fe;
+      color: #1e293b;
+      vertical-align: top;
+    }
+    tbody td:first-child { font-weight: 600; color: #312e81; }
+    .risk-high { color: #dc2626; font-weight: 700; }
+    .risk-medium { color: #d97706; font-weight: 600; }
+    .risk-low { color: #16a34a; font-weight: 600; }
+
+    /* ── Insight / Pivot cards ── */
+    .card {
+      margin-bottom: 10px;
+      padding: 14px 16px;
+      background: #fafafa;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      border-left: 3px solid #6366f1;
+    }
+    .card-title {
+      font-weight: 700;
+      font-size: 13px;
+      color: #1e293b;
+      margin-bottom: 4px;
+    }
+    .card-sub {
+      font-size: 11.5px;
+      color: #64748b;
+      margin-top: 3px;
+      line-height: 1.5;
+    }
+    .card-action {
+      font-size: 11.5px;
+      color: #4f46e5;
+      margin-top: 5px;
+      font-weight: 600;
+    }
+    .card-pivot { border-left-color: #7c3aed; }
+    .confidence-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 5px;
+    }
+    .conf-high { background: #dcfce7; color: #166534; }
+    .conf-medium { background: #fef9c3; color: #854d0e; }
+    .conf-low { background: #fee2e2; color: #991b1b; }
+
+    /* ── Disclaimer ── */
+    .disclaimer {
+      margin-top: 28px;
+      padding: 12px 14px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      font-size: 10.5px;
+      color: #78350f;
+      line-height: 1.6;
+    }
+
+    /* ── Watermark ── */
     .watermark {
       position: fixed;
-      top: 35%;
+      top: 38%;
       left: 50%;
       width: 100%;
       margin-left: -50%;
       text-align: center;
-      transform: rotate(-32deg);
-      font-size: 72px;
-      font-weight: 800;
+      font-size: 80px;
+      font-weight: 900;
       color: #6366f1;
-      opacity: 0.06;
-      z-index: 0;
-      pointer-events: none;
+      opacity: 0.03;
       letter-spacing: 0.2em;
     }
-    .content { position: relative; z-index: 1; }
-    .brand-banner {
-      background: linear-gradient(135deg, #312e81 0%, #4f46e5 45%, #6366f1 100%);
-      color: #fff;
-      padding: 20px 24px;
-      margin: -8px -8px 28px -8px;
-      border-radius: 0 0 12px 12px;
-    }
-    .brand-banner .wordmark {
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-    .brand-banner .tagline {
-      font-size: 11px;
-      opacity: 0.92;
-      margin-top: 6px;
-      letter-spacing: 0.04em;
-    }
-    .doc-title { font-size: 22px; margin: 0 0 8px 0; }
-    .idea { color: #555; margin-bottom: 20px; font-size: 13px; }
-    h2 {
-      font-size: 16px;
-      color: #312e81;
-      margin-top: 28px;
-      border-bottom: 2px solid #e0e7ff;
-      padding-bottom: 8px;
-    }
-    .metric-row { margin-top: 8px; }
-    .metric {
-      display: inline-block;
-      margin: 6px 12px 6px 0;
-      padding: 10px 16px;
-      background: #f5f5ff;
-      border: 1px solid #e0e7ff;
-      border-radius: 8px;
-      vertical-align: top;
-    }
-    .metric .value { font-size: 24px; font-weight: 600; color: #312e81; }
-    .metric .label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-    th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #eee; }
-    th { font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; }
-    .risk-high { color: #dc2626; font-weight: 600; }
-    .risk-medium { color: #f59e0b; }
-    .risk-low { color: #16a34a; }
-    .card {
-      margin-bottom: 12px;
-      padding: 14px;
-      background: #f8fafc;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-    }
-    .card-title { font-weight: 600; font-size: 14px; }
-    .card-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
-    .card-action { font-size: 12px; color: #4f46e5; margin-top: 4px; }
-    .disclaimer {
-      margin-top: 36px;
-      padding: 14px;
-      background: #fffbeb;
-      border: 1px solid #fcd34d;
-      border-radius: 8px;
-      font-size: 11px;
-      color: #92400e;
-    }
-    .brand-footer {
-      margin-top: 28px;
-      padding: 14px 16px;
-      background: #1e1b4b;
-      color: #e0e7ff;
-      border-radius: 8px;
-      font-size: 10px;
-    }
-    .brand-footer strong { color: #fff; }
   </style>
 </head>
 <body>
-  <div class="watermark">FUTURUS</div>
-  <div class="content">
-    <div class="brand-banner">
-      <div class="wordmark">Futurus</div>
-      <div class="tagline">AI-powered market simulation report · Proprietary output</div>
-    </div>
-    <h1 class="doc-title">{{ business_name }} — Simulation Report</h1>
-    <p class="idea">{{ idea_description }}</p>
 
+  <!-- Repeated page header -->
+  <div class="page-header">
+    <div class="page-header-inner">
+      <div class="page-header-logo">
+        <span class="logo-mark"><span class="logo-mark-inner"></span></span>
+        <span class="logo-wordmark">Futurus</span>
+      </div>
+      <span class="page-header-tagline">AI Market Simulation &nbsp;·&nbsp; Confidential</span>
+    </div>
+  </div>
+
+  <!-- Repeated page footer -->
+  <div class="page-footer">
+    <span class="page-footer-left">Report ID: {{ simulation_id }} &nbsp;·&nbsp; futurus.dev</span>
+    <span class="page-footer-right">&#169; Futurus &nbsp;·&nbsp; Proprietary Output</span>
+  </div>
+
+  <!-- Watermark -->
+  <div class="watermark">FUTURUS</div>
+
+  <!-- Main content -->
+  <div class="content">
+
+    <!-- Cover block -->
+    <div class="cover-block">
+      <div class="cover-label">Simulation Report</div>
+      <h1 class="cover-title">{{ business_name }}</h1>
+      <p class="cover-idea">{{ idea_description }}</p>
+      <span class="cover-badge">AI-Powered Market Simulation</span>
+    </div>
+
+    <!-- Key Metrics -->
     <h2>Key Metrics</h2>
     <div class="metric-row">
-      <div class="metric"><div class="value">{{ metrics.adoption_rate|default('—') }}%</div><div class="label">Adoption Rate</div></div>
-      <div class="metric"><div class="value">{{ metrics.churn_rate|default('—') }}%</div><div class="label">Churn Rate</div></div>
-      <div class="metric"><div class="value">{{ metrics.total_adopters|default('—') }}</div><div class="label">Total Adopters</div></div>
-      <div class="metric"><div class="value">{{ metrics.viral_coefficient|default('—') }}</div><div class="label">Viral Coefficient</div></div>
-      <div class="metric"><div class="value">{{ metrics.confidence_score|default('—') }}%</div><div class="label">Confidence Score</div></div>
+      <div class="metric metric-highlight">
+        <div class="value">{{ metrics.adoption_rate|default('—') }}%</div>
+        <div class="label">Adoption Rate</div>
+      </div>
+      <div class="metric metric-warn">
+        <div class="value">{{ metrics.churn_rate|default('—') }}%</div>
+        <div class="label">Churn Rate</div>
+      </div>
+      <div class="metric">
+        <div class="value">{{ metrics.total_adopters|default('—') }}</div>
+        <div class="label">Total Adopters</div>
+      </div>
+      <div class="metric">
+        <div class="value">{{ metrics.viral_coefficient|default('—') }}</div>
+        <div class="label">Viral Coefficient</div>
+      </div>
+      <div class="metric">
+        <div class="value">{{ metrics.confidence_score|default('—') }}%</div>
+        <div class="label">Confidence Score</div>
+      </div>
     </div>
 
+    <!-- Segment Analysis -->
     <h2>Customer Segment Analysis</h2>
     <table>
-      <tr><th>Segment</th><th>Adoption</th><th>Churn</th><th>Referrals</th></tr>
-      {% for p in personas %}
-      <tr>
-        <td><strong>{{ p.segment|default('—') }}</strong></td>
-        <td>{{ p.adoption_rate|default('—') }}%</td>
-        <td>{{ p.churn_rate|default('—') }}%</td>
-        <td>{{ p.referrals_generated|default('—') }}</td>
-      </tr>
-      {% endfor %}
+      <thead>
+        <tr>
+          <th>Segment</th>
+          <th>Adoption Rate</th>
+          <th>Churn Rate</th>
+          <th>Referrals Generated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in personas %}
+        <tr>
+          <td>{{ p.segment|default('—') }}</td>
+          <td>{{ p.adoption_rate|default('—') }}%</td>
+          <td>{{ p.churn_rate|default('—') }}%</td>
+          <td>{{ p.referrals_generated|default('—') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
 
+    <!-- Risk Assessment -->
     <h2>Risk Assessment</h2>
     <table>
-      <tr><th>Risk</th><th>Probability</th><th>Impact</th><th>Mitigation</th></tr>
-      {% for risk in risks %}
-      <tr>
-        <td>{{ risk.risk|default('—') }}</td>
-        <td class="risk-{{ risk.probability|default('low') }}">{{ risk.probability|default('—') }}</td>
-        <td class="risk-{{ risk.impact|default('low') }}">{{ risk.impact|default('—') }}</td>
-        <td>{{ risk.mitigation|default('—') }}</td>
-      </tr>
-      {% endfor %}
+      <thead>
+        <tr>
+          <th>Risk Factor</th>
+          <th>Probability</th>
+          <th>Impact</th>
+          <th>Mitigation Strategy</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for risk in risks %}
+        <tr>
+          <td style="font-weight:400;color:#1e293b;">{{ risk.risk|default('—') }}</td>
+          <td class="risk-{{ risk.probability|default('low') }}">{{ risk.probability|default('—')|title }}</td>
+          <td class="risk-{{ risk.impact|default('low') }}">{{ risk.impact|default('—')|title }}</td>
+          <td style="font-weight:400;color:#475569;">{{ risk.mitigation|default('—') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
 
+    <!-- Key Insights -->
     <h2>Key Insights</h2>
     {% for insight in insights %}
     <div class="card">
       <div class="card-title">{{ insight.insight|default('—') }}</div>
       <div class="card-sub">{{ insight.supporting_evidence|default('') }}</div>
-      <div class="card-action">Action: {{ insight.actionability|default('—') }}</div>
+      <div class="card-action">&#8594; {{ insight.actionability|default('—') }}</div>
     </div>
     {% endfor %}
 
+    <!-- Pivot Suggestions -->
     <h2>Pivot Suggestions</h2>
     {% for pivot in pivots %}
-    <div class="card">
+    <div class="card card-pivot">
       <div class="card-title">{{ pivot.pivot|default('—') }}</div>
       <div class="card-sub">{{ pivot.rationale|default('') }}</div>
-      <div class="card-sub">Evidence: {{ pivot.evidence_from_simulation|default('—') }}</div>
-      <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Confidence: {{ pivot.confidence|default('—') }}</div>
+      <div class="card-sub" style="margin-top:4px;"><em>Evidence: {{ pivot.evidence_from_simulation|default('—') }}</em></div>
+      <span class="confidence-badge conf-{{ pivot.confidence|default('low') }}">{{ pivot.confidence|default('—')|title }} Confidence</span>
     </div>
     {% endfor %}
 
+    <!-- Disclaimer -->
     <div class="disclaimer">
-      <strong>About this report:</strong> This simulation uses AI agents to model potential customer behavior.
-      Results are directional estimates, not guarantees. The confidence score ({{ metrics.confidence_score|default('—') }}%)
-      reflects internal simulation consistency, not real-world prediction accuracy.
-      Use these insights to inform your decisions alongside real customer research.
+      <strong>Important Notice:</strong> This report is generated by Futurus AI market simulation and is intended
+      as a directional tool to inform decision-making. Results represent modeled behavior of AI agents and are not
+      guarantees of real-world outcomes. The confidence score ({{ metrics.confidence_score|default('—') }}%) reflects
+      internal simulation consistency. Always validate insights with real customer research before making major decisions.
     </div>
 
-    <div class="brand-footer">
-      <strong>Futurus</strong> — Startup fate simulator. This document was generated by Futurus and is intended
-      for the account holder. Redistribution or removal of Futurus branding is not permitted without permission.
-      <br /><br />
-      Report ID: {{ simulation_id }} · © Futurus
-    </div>
   </div>
 </body>
 </html>

@@ -239,6 +239,31 @@ async def delete_simulation(
     return JSONResponse({"ok": True})
 
 
+@router.post("/{simulation_id}/notify", response_model=SimulationResponse)
+@limiter.limit(LIMITS["default_authenticated"])
+async def toggle_notify(
+    request: Request,
+    simulation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Simulation).where(
+            Simulation.id == simulation_id,
+            Simulation.user_id == current_user.id,
+        )
+    )
+    sim = result.scalar_one_or_none()
+    if not sim:
+        raise HTTPException(status_code=404, detail="Simulation not found")
+    if sim.status not in (SimulationStatus.QUEUED, SimulationStatus.BUILDING_SEED, SimulationStatus.GENERATING_PERSONAS, SimulationStatus.RUNNING, SimulationStatus.GENERATING_REPORT):
+        raise HTTPException(status_code=400, detail="Simulation is already finished")
+    sim.notify_on_complete = not sim.notify_on_complete
+    await db.commit()
+    await db.refresh(sim)
+    return SimulationResponse.model_validate(sim)
+
+
 @router.post("/{simulation_id}/rerun", response_model=SimulationResponse)
 @limiter.limit(LIMITS["simulation_create"])
 async def rerun_simulation(

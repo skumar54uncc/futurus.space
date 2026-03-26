@@ -46,6 +46,7 @@ export interface Simulation {
   celery_task_id?: string | null;
   ensemble_runs?: number;
   estimated_cost_usd?: number;
+  notify_on_complete?: boolean;
 }
 
 export interface SummaryMetrics {

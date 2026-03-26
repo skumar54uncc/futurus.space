@@ -161,6 +161,7 @@ class SimulationResponse(BaseModel):
     actual_cost_usd: float
     celery_task_id: Optional[str] = None
     error_message: Optional[str] = None
+    notify_on_complete: bool = False
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

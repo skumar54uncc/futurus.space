@@ -92,24 +92,38 @@ export function Hero() {
           <span className="font-light text-slate-300">about to be.</span>
         </h1>
 
-        <p className="text-lg text-slate-400 max-w-xl mx-auto mb-10 leading-relaxed">
-          Write any idea in plain English. Futurus runs it through up to 1,000 AI agents (40 simulation turns on the free-tier build)
-          and shows you adoption, risk, and what to change — before you build.
+        <p className="text-lg text-slate-400 max-w-lg mx-auto mb-10 leading-relaxed">
+          Write any idea in plain English. Futurus stress-tests it through up to 1,000 AI minds —
+          and shows you exactly what will happen before you commit.
         </p>
 
-        <div className="flex items-center justify-center gap-4 mb-12">
+        <div className="flex items-center justify-center gap-4 mb-12 flex-wrap">
           <Link
             href="/sign-up"
-            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors duration-150 ease-out active:scale-[0.98] animate-pulse-glow"
+            className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all duration-150 ease-out active:scale-[0.98] shadow-[0_0_32px_rgba(99,102,241,0.35)] hover:shadow-[0_0_48px_rgba(99,102,241,0.5)]"
           >
             Simulate your idea &rarr;
           </Link>
           <a
             href="#how-it-works"
-            className="px-8 py-3 rounded-lg font-medium text-slate-300 border border-white/10 hover:border-white/20 hover:text-white transition-colors duration-150 ease-out active:scale-[0.98]"
+            className="px-8 py-3.5 rounded-xl font-medium text-slate-300 border border-white/10 hover:border-indigo-500/40 hover:text-white hover:bg-indigo-500/5 transition-all duration-150 ease-out active:scale-[0.98]"
           >
-            Watch it work
+            See how it works
           </a>
+        </div>
+
+        {/* Social-proof stat strip */}
+        <div className="flex items-center justify-center gap-8 flex-wrap">
+          {[
+            ["1,000", "AI agents per run"],
+            ["40", "simulation turns"],
+            ["6", "report sections"],
+          ].map(([num, label]) => (
+            <div key={label} className="text-center">
+              <div className="text-2xl font-medium text-white/90">{num}</div>
+              <div className="text-xs text-slate-600 uppercase tracking-widest mt-0.5">{label}</div>
+            </div>
+          ))}
         </div>
       </div>
     </section>

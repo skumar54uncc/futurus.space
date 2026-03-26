@@ -205,23 +205,24 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             _emit_progress(simulation_id, "Report ready!", 100, report_id=str(report.id))
             logger.info("simulation_completed", simulation_id=simulation_id, cost=sim.actual_cost_usd)
 
-            try:
-                from services.email_service import send_simulation_complete
-                from models.user import User
-                user_result = await db.execute(
-                    select(User).where(User.id == sim.user_id)
-                )
-                user = user_result.scalar_one_or_none()
-                if user and user.email:
-                    await send_simulation_complete(
-                        to_email=user.email,
-                        user_name=user.full_name or "there",
-                        business_name=sim.business_name,
-                        report_url=f"https://futurus.dev/simulation/{sim.id}/report",
-                        adoption_rate=report.summary_metrics.get("adoption_rate", 0),
+            if sim.notify_on_complete:
+                try:
+                    from services.email_service import send_simulation_complete
+                    from models.user import User
+                    user_result = await db.execute(
+                        select(User).where(User.id == sim.user_id)
                     )
-            except Exception as email_err:
-                logger.warning("email_send_failed", error=str(email_err))
+                    user = user_result.scalar_one_or_none()
+                    if user and user.email:
+                        await send_simulation_complete(
+                            to_email=user.email,
+                            user_name=user.full_name or "there",
+                            business_name=sim.business_name,
+                            report_url=f"https://futurus.dev/simulation/{sim.id}/report",
+                            adoption_rate=report.summary_metrics.get("adoption_rate", 0),
+                        )
+                except Exception as email_err:
+                    logger.warning("email_send_failed", error=str(email_err))
 
         except Exception as e:
             logger.exception("simulation_failed", simulation_id=simulation_id, error=str(e))

@@ -37,6 +37,8 @@ export default function SimulationPage() {
   const [agentTarget, setAgentTarget] = useState(0);
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [notifyLoading, setNotifyLoading] = useState(false);
+  const [notifyEnabled, setNotifyEnabled] = useState<boolean | null>(null);
   const redirected = useRef(false);
 
   const { simulation, loading, error, refresh } = useSimulation(simulationId, { pollMs: 2000 });
@@ -99,6 +101,13 @@ export default function SimulationPage() {
     onMessage: handleWsMessage,
   });
 
+  // Sync notify state from server on first load
+  useEffect(() => {
+    if (simulation && notifyEnabled === null) {
+      setNotifyEnabled(simulation.notify_on_complete ?? false);
+    }
+  }, [simulation, notifyEnabled]);
+
   useEffect(() => {
     if (!simulation) return;
     setMaxTurns((m) => m || simulation.max_turns);
@@ -138,6 +147,24 @@ export default function SimulationPage() {
 
   const displayMaxTurns = maxTurns || simulation?.max_turns || 0;
   const displayAgentTarget = agentTarget || simulation?.agent_count || 0;
+
+  async function toggleNotify() {
+    setNotifyLoading(true);
+    const sid = encodeURIComponent(String(simulationId).trim());
+    try {
+      const { data } = await api.post<{ notify_on_complete: boolean }>(`/api/simulations/${sid}/notify`);
+      setNotifyEnabled(data.notify_on_complete);
+      toast.success(
+        data.notify_on_complete
+          ? "You'll get an email when this simulation completes."
+          : "Email notification removed."
+      );
+    } catch {
+      toast.error("Couldn't update notification preference");
+    } finally {
+      setNotifyLoading(false);
+    }
+  }
 
   async function confirmRevoke() {
     setRevoking(true);
@@ -196,25 +223,19 @@ export default function SimulationPage() {
             Stop simulation
           </Button>
         )}
-        <Button
-          variant="secondary"
-          size="sm"
-          type="button"
-          title="Opens your email app with a draft that links to this simulation (no automated emails yet)"
-          icon={<Mail size={14} />}
-          onClick={() => {
-            const url = typeof window !== "undefined" ? window.location.href : "";
-            const name = simulation?.business_name?.trim() || "Futurus simulation";
-            const subject = encodeURIComponent(`Update: ${name}`);
-            const body = encodeURIComponent(
-              `I'm tracking this Futurus simulation:\n${url}\n\n(Automated email digests are not enabled yet — this draft is for your own reminders.)`
-            );
-            window.location.href = `mailto:?subject=${subject}&body=${body}`;
-            toast.success("If your email app opened, you can send yourself a reminder link.");
-          }}
-        >
-          Email updates
-        </Button>
+        {simulation && MAY_STILL_BE_ACTIVE.has(simulation.status) && (
+          <Button
+            variant={notifyEnabled ? "primary" : "secondary"}
+            size="sm"
+            type="button"
+            loading={notifyLoading}
+            icon={<Mail size={14} />}
+            title={notifyEnabled ? "Click to cancel email notification" : "Email me when this simulation completes"}
+            onClick={() => void toggleNotify()}
+          >
+            {notifyEnabled ? "Email on ✓" : "Email updates"}
+          </Button>
+        )}
       </div>
 
       <div aria-live="polite" aria-atomic="true" className="text-center text-[--text-secondary] text-sm mb-6 min-h-[3rem]">

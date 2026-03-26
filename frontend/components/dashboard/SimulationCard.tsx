@@ -145,10 +145,24 @@ export function SimulationCard({ sim, onDeleted, onUpdated }: SimulationCardProp
   return (
     <>
       <div
-        className={`h-full w-full min-h-0 flex flex-col bg-[--bg-surface] border rounded-[16px] p-5 transition-all duration-300 ${
-          isFailed ? "border-[rgba(239,68,68,0.25)]" : "border-[--border-subtle]"
+        className={`h-full w-full min-h-0 flex flex-col bg-[--bg-surface] border rounded-[16px] p-5 transition-all duration-300 hover:border-[--border-default] hover:-translate-y-0.5 hover:shadow-[0_4px_24px_rgba(0,0,0,0.3)] ${
+          isFailed
+            ? "border-[rgba(239,68,68,0.25)]"
+            : isCompleted
+              ? "border-[--border-default] hover:border-indigo-500/30"
+              : isRunning
+                ? "border-indigo-500/20 shadow-[0_0_0_1px_rgba(99,102,241,0.08)]"
+                : "border-[--border-subtle]"
         }`}
       >
+        {isRunning && (
+          <div className="h-0.5 -mx-5 -mt-5 mb-5 rounded-t-[16px] overflow-hidden bg-[--bg-elevated]">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-700 ease-out"
+              style={{ width: `${Math.min(100, progress)}%` }}
+            />
+          </div>
+        )}
         <div className="flex items-start justify-between gap-3 mb-2 shrink-0">
           <div className="flex-1 min-w-0">
             {sim.business_name.length > 42 ? (

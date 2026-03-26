@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, Float, JSON, ForeignKey, Enum, DateTime, Text
+from sqlalchemy import String, Integer, Float, JSON, ForeignKey, Enum, DateTime, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from core.database import Base
@@ -50,6 +50,7 @@ class Simulation(Base):
     actual_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notify_on_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
