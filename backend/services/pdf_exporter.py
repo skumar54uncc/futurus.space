@@ -1,4 +1,5 @@
 """PDF export for reports: WeasyPrint when available, xhtml2pdf fallback (Windows-friendly)."""
+import base64
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -21,254 +22,150 @@ REPORT_HTML_TEMPLATE = """
 <head>
   <meta charset="utf-8" />
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: Helvetica, Arial, sans-serif;
-      padding: 0;
-      margin: 0;
-      color: #0f172a;
-      font-size: 12.5px;
-      line-height: 1.5;
+      color: #1e293b;
+      font-size: 11px;
+      line-height: 1.55;
       background: #ffffff;
     }
 
-    /* ── Fixed page header (repeats on every page) ── */
-    .page-header {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      height: 52px;
-      background: #1e1b4b;
-      padding: 0 28px;
-    }
-    .page-header-inner {
-      display: inline-block;
-      width: 100%;
-    }
-    .page-header-logo {
-      display: inline-block;
-      vertical-align: middle;
-      margin-top: 10px;
-    }
-    .logo-mark {
-      display: inline-block;
-      vertical-align: middle;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      border: 2px solid rgba(129,140,248,0.7);
-      margin-right: 8px;
-      text-align: center;
-      line-height: 18px;
-    }
-    .logo-mark-inner {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #818cf8;
-      vertical-align: middle;
-      margin-top: -2px;
-    }
-    .logo-wordmark {
-      display: inline-block;
-      vertical-align: middle;
-      font-size: 18px;
-      font-style: italic;
-      font-weight: 400;
-      color: #f8fafc;
-      letter-spacing: -0.01em;
-    }
-    .page-header-tagline {
-      display: inline-block;
-      vertical-align: middle;
-      float: right;
-      margin-top: 17px;
-      font-size: 10px;
-      color: rgba(255,255,255,0.4);
-      letter-spacing: 0.04em;
+    /* ── xhtml2pdf page frames (proper repeating header/footer) ── */
+    @page {
+      size: A4;
+      margin-top: 62px;
+      margin-bottom: 46px;
+      margin-left: 36px;
+      margin-right: 36px;
+
+      @frame header_frame {
+        -pdf-frame-content: pdf-page-header;
+        top: 0px; left: 0px; right: 0px;
+        height: 46px;
+      }
+      @frame footer_frame {
+        -pdf-frame-content: pdf-page-footer;
+        bottom: 0px; left: 0px; right: 0px;
+        height: 30px;
+      }
     }
 
-    /* ── Fixed page footer (repeats on every page) ── */
-    .page-footer {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: 36px;
+    /* ── Header bar ── */
+    #pdf-page-header {
       background: #1e1b4b;
-      padding: 9px 28px;
+      height: 46px;
+      padding: 0 36px;
     }
-    .page-footer-left {
-      display: inline-block;
-      font-size: 9px;
-      color: rgba(255,255,255,0.35);
-      letter-spacing: 0.05em;
+    #pdf-page-header table { width: 100%; height: 46px; border-collapse: collapse; }
+    #pdf-page-header td { vertical-align: middle; border: none; padding: 0; background: transparent; }
+    .hdr-logo-img { height: 24px; width: auto; }
+    .hdr-logo-text {
+      font-size: 16px; font-style: italic; font-weight: 400;
+      color: #f8fafc; letter-spacing: -0.01em;
     }
-    .page-footer-right {
-      display: inline-block;
-      float: right;
-      font-size: 9px;
-      color: rgba(255,255,255,0.35);
-      font-style: italic;
+    .hdr-tagline {
+      font-size: 9px; color: rgba(255,255,255,0.45);
+      letter-spacing: 0.05em; text-align: right;
     }
 
-    /* ── Main content area (accounts for fixed header/footer) ── */
-    .content {
-      margin-top: 68px;
-      margin-bottom: 48px;
-      padding: 0 28px;
-    }
-
-    /* ── Hero cover block ── */
-    .cover-block {
+    /* ── Footer bar ── */
+    #pdf-page-footer {
       background: #1e1b4b;
-      border-radius: 12px;
-      padding: 28px 28px 24px;
-      margin-bottom: 28px;
-      color: #fff;
+      height: 30px;
+      padding: 0 36px;
+    }
+    #pdf-page-footer table { width: 100%; height: 30px; border-collapse: collapse; }
+    #pdf-page-footer td { vertical-align: middle; border: none; padding: 0; background: transparent; }
+    .ftr-left { font-size: 8px; color: rgba(255,255,255,0.4); letter-spacing: 0.04em; }
+    .ftr-right { font-size: 8px; color: rgba(255,255,255,0.4); font-style: italic; text-align: right; }
+
+    /* ── Cover block ── */
+    .cover {
+      background: #1e1b4b;
+      border-radius: 10px;
+      padding: 22px 24px 18px;
+      margin-bottom: 22px;
     }
     .cover-label {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #818cf8;
-      margin-bottom: 10px;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.14em;
+      text-transform: uppercase; color: #818cf8; margin-bottom: 8px;
     }
     .cover-title {
-      font-size: 22px;
-      font-weight: 700;
-      color: #f8fafc;
-      margin: 0 0 8px 0;
-      line-height: 1.25;
+      font-size: 22px; font-weight: 800; color: #f8fafc;
+      line-height: 1.2; margin-bottom: 8px;
     }
-    .cover-idea {
-      font-size: 12px;
-      color: rgba(255,255,255,0.55);
-      margin: 0;
-      line-height: 1.6;
+    .cover-desc {
+      font-size: 11px; color: rgba(255,255,255,0.58); line-height: 1.6; margin-bottom: 14px;
     }
     .cover-badge {
       display: inline-block;
-      margin-top: 14px;
-      padding: 4px 12px;
-      background: rgba(99,102,241,0.2);
-      border: 1px solid rgba(99,102,241,0.4);
+      padding: 3px 10px;
+      background: rgba(99,102,241,0.22);
+      border: 1px solid rgba(99,102,241,0.45);
       border-radius: 100px;
-      font-size: 10px;
-      font-weight: 600;
-      color: #a5b4fc;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+      font-size: 8.5px; font-weight: 700; color: #a5b4fc;
+      letter-spacing: 0.08em; text-transform: uppercase;
     }
 
     /* ── Section headings ── */
     h2 {
-      font-size: 13px;
-      font-weight: 700;
-      color: #312e81;
-      margin: 28px 0 12px 0;
-      padding-bottom: 6px;
-      border-bottom: 1.5px solid #e0e7ff;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
+      font-size: 9.5px; font-weight: 800; color: #312e81;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      padding-bottom: 5px; border-bottom: 1.5px solid #e0e7ff;
+      margin: 20px 0 10px 0;
     }
 
-    /* ── Metrics grid ── */
-    .metric-row { margin-bottom: 8px; }
-    .metric {
-      display: inline-block;
-      margin: 0 10px 10px 0;
-      padding: 12px 16px;
-      background: #f5f3ff;
-      border: 1.5px solid #ddd6fe;
-      border-radius: 10px;
-      vertical-align: top;
-      min-width: 95px;
+    /* ── Metrics — use table so xhtml2pdf renders columns correctly ── */
+    .metrics-tbl { width: 100%; border-collapse: separate; border-spacing: 5px; margin-bottom: 4px; }
+    .metrics-tbl td {
+      background: #f5f3ff; border: 1.5px solid #ddd6fe;
+      border-radius: 8px; padding: 10px 12px;
+      vertical-align: top; width: 20%; text-align: left;
     }
-    .metric .value {
-      font-size: 22px;
-      font-weight: 700;
-      color: #4338ca;
-      line-height: 1;
-      margin-bottom: 4px;
-    }
-    .metric .label {
-      font-size: 9.5px;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-weight: 600;
-    }
-    .metric-highlight .value { color: #16a34a; }
-    .metric-warn .value { color: #d97706; }
+    .mv { font-size: 20px; font-weight: 800; color: #4338ca; line-height: 1; margin-bottom: 3px; }
+    .ml { font-size: 8px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
+    .mv-green { color: #16a34a; }
+    .mv-orange { color: #d97706; }
 
-    /* ── Tables ── */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 4px;
-      font-size: 11.5px;
+    /* ── Data tables ── */
+    .data-tbl { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-top: 2px; }
+    .data-tbl thead tr { background: #1e1b4b; }
+    .data-tbl thead th {
+      text-align: left; padding: 7px 9px;
+      font-size: 8.5px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: #a5b4fc; border: none;
     }
-    thead tr { background: #1e1b4b; }
-    thead th {
-      text-align: left;
-      padding: 8px 10px;
-      font-size: 9.5px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #a5b4fc;
-      border: none;
+    .data-tbl tbody tr:nth-child(even) { background: #f8f7ff; }
+    .data-tbl tbody tr:nth-child(odd) { background: #ffffff; }
+    .data-tbl tbody td {
+      padding: 7px 9px; border-bottom: 1px solid #ede9fe;
+      color: #1e293b; vertical-align: top;
     }
-    tbody tr:nth-child(even) { background: #f8f7ff; }
-    tbody tr:nth-child(odd) { background: #ffffff; }
-    tbody td {
-      padding: 8px 10px;
-      border-bottom: 1px solid #ede9fe;
-      color: #1e293b;
-      vertical-align: top;
-    }
-    tbody td:first-child { font-weight: 600; color: #312e81; }
+    .data-tbl tbody td.seg { font-weight: 600; color: #312e81; }
+    .risk-critical { color: #b91c1c; font-weight: 700; }
     .risk-high { color: #dc2626; font-weight: 700; }
     .risk-medium { color: #d97706; font-weight: 600; }
     .risk-low { color: #16a34a; font-weight: 600; }
+    .risk-name { font-weight: 500; color: #1e293b; }
+    .mit { font-weight: 400; color: #475569; }
 
-    /* ── Insight / Pivot cards ── */
+    /* ── Cards (insights / pivots) ── */
     .card {
-      margin-bottom: 10px;
-      padding: 14px 16px;
-      background: #fafafa;
-      border-radius: 8px;
-      border: 1px solid #e2e8f0;
-      border-left: 3px solid #6366f1;
-    }
-    .card-title {
-      font-weight: 700;
-      font-size: 13px;
-      color: #1e293b;
-      margin-bottom: 4px;
-    }
-    .card-sub {
-      font-size: 11.5px;
-      color: #64748b;
-      margin-top: 3px;
-      line-height: 1.5;
-    }
-    .card-action {
-      font-size: 11.5px;
-      color: #4f46e5;
-      margin-top: 5px;
-      font-weight: 600;
+      margin-bottom: 8px; padding: 11px 13px;
+      background: #fafafa; border-radius: 7px;
+      border: 1px solid #e2e8f0; border-left: 3px solid #6366f1;
     }
     .card-pivot { border-left-color: #7c3aed; }
-    .confidence-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 100px;
-      font-size: 9px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-top: 5px;
+    .card-title { font-weight: 700; font-size: 11.5px; color: #1e293b; margin-bottom: 3px; }
+    .card-body { font-size: 10px; color: #64748b; line-height: 1.5; margin-top: 2px; }
+    .card-evidence { font-size: 9.5px; color: #94a3b8; font-style: italic; margin-top: 3px; }
+    .card-action { font-size: 10px; color: #4f46e5; margin-top: 4px; font-weight: 600; }
+    .conf-badge {
+      display: inline-block; padding: 1px 7px; border-radius: 100px;
+      font-size: 8px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; margin-top: 4px;
     }
     .conf-high { background: #dcfce7; color: #166534; }
     .conf-medium { background: #fef9c3; color: #854d0e; }
@@ -276,169 +173,140 @@ REPORT_HTML_TEMPLATE = """
 
     /* ── Disclaimer ── */
     .disclaimer {
-      margin-top: 28px;
-      padding: 12px 14px;
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 8px;
-      font-size: 10.5px;
-      color: #78350f;
-      line-height: 1.6;
-    }
-
-    /* ── Watermark ── */
-    .watermark {
-      position: fixed;
-      top: 38%;
-      left: 50%;
-      width: 100%;
-      margin-left: -50%;
-      text-align: center;
-      font-size: 80px;
-      font-weight: 900;
-      color: #6366f1;
-      opacity: 0.03;
-      letter-spacing: 0.2em;
+      margin-top: 22px; padding: 10px 12px;
+      background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 7px; font-size: 9.5px; color: #78350f; line-height: 1.6;
     }
   </style>
 </head>
 <body>
 
-  <!-- Repeated page header -->
-  <div class="page-header">
-    <div class="page-header-inner">
-      <div class="page-header-logo">
-        <span class="logo-mark"><span class="logo-mark-inner"></span></span>
-        <span class="logo-wordmark">Futurus</span>
-      </div>
-      <span class="page-header-tagline">AI Market Simulation &nbsp;·&nbsp; Confidential</span>
-    </div>
+  <!-- Page header (referenced by @frame header_frame) -->
+  <div id="pdf-page-header">
+    <table><tr>
+      <td>
+        {% if logo_b64 %}
+        <img class="hdr-logo-img" src="data:image/png;base64,{{ logo_b64 }}" alt="Futurus" />
+        {% else %}
+        <span class="hdr-logo-text">Futurus</span>
+        {% endif %}
+      </td>
+      <td class="hdr-tagline">AI Market Simulation &nbsp;&middot;&nbsp; Confidential</td>
+    </tr></table>
   </div>
 
-  <!-- Repeated page footer -->
-  <div class="page-footer">
-    <span class="page-footer-left">Report ID: {{ simulation_id }} &nbsp;·&nbsp; futurus.dev</span>
-    <span class="page-footer-right">&#169; Futurus &nbsp;·&nbsp; Proprietary Output</span>
+  <!-- Page footer (referenced by @frame footer_frame) -->
+  <div id="pdf-page-footer">
+    <table><tr>
+      <td class="ftr-left">Report ID: {{ simulation_id }} &nbsp;&middot;&nbsp; futurus.dev</td>
+      <td class="ftr-right">&#169; Futurus &nbsp;&middot;&nbsp; Proprietary Output</td>
+    </tr></table>
   </div>
 
-  <!-- Watermark -->
-  <div class="watermark">FUTURUS</div>
-
-  <!-- Main content -->
-  <div class="content">
-
-    <!-- Cover block -->
-    <div class="cover-block">
-      <div class="cover-label">Simulation Report</div>
-      <h1 class="cover-title">{{ business_name }}</h1>
-      <p class="cover-idea">{{ idea_description }}</p>
-      <span class="cover-badge">AI-Powered Market Simulation</span>
-    </div>
-
-    <!-- Key Metrics -->
-    <h2>Key Metrics</h2>
-    <div class="metric-row">
-      <div class="metric metric-highlight">
-        <div class="value">{{ metrics.adoption_rate|default('—') }}%</div>
-        <div class="label">Adoption Rate</div>
-      </div>
-      <div class="metric metric-warn">
-        <div class="value">{{ metrics.churn_rate|default('—') }}%</div>
-        <div class="label">Churn Rate</div>
-      </div>
-      <div class="metric">
-        <div class="value">{{ metrics.total_adopters|default('—') }}</div>
-        <div class="label">Total Adopters</div>
-      </div>
-      <div class="metric">
-        <div class="value">{{ metrics.viral_coefficient|default('—') }}</div>
-        <div class="label">Viral Coefficient</div>
-      </div>
-      <div class="metric">
-        <div class="value">{{ metrics.confidence_score|default('—') }}%</div>
-        <div class="label">Confidence Score</div>
-      </div>
-    </div>
-
-    <!-- Segment Analysis -->
-    <h2>Customer Segment Analysis</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Segment</th>
-          <th>Adoption Rate</th>
-          <th>Churn Rate</th>
-          <th>Referrals Generated</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in personas %}
-        <tr>
-          <td>{{ p.segment|default('—') }}</td>
-          <td>{{ p.adoption_rate|default('—') }}%</td>
-          <td>{{ p.churn_rate|default('—') }}%</td>
-          <td>{{ p.referrals_generated|default('—') }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-
-    <!-- Risk Assessment -->
-    <h2>Risk Assessment</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Risk Factor</th>
-          <th>Probability</th>
-          <th>Impact</th>
-          <th>Mitigation Strategy</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for risk in risks %}
-        <tr>
-          <td style="font-weight:400;color:#1e293b;">{{ risk.risk|default('—') }}</td>
-          <td class="risk-{{ risk.probability|default('low') }}">{{ risk.probability|default('—')|title }}</td>
-          <td class="risk-{{ risk.impact|default('low') }}">{{ risk.impact|default('—')|title }}</td>
-          <td style="font-weight:400;color:#475569;">{{ risk.mitigation|default('—') }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-
-    <!-- Key Insights -->
-    <h2>Key Insights</h2>
-    {% for insight in insights %}
-    <div class="card">
-      <div class="card-title">{{ insight.insight|default('—') }}</div>
-      <div class="card-sub">{{ insight.supporting_evidence|default('') }}</div>
-      <div class="card-action">&#8594; {{ insight.actionability|default('—') }}</div>
-    </div>
-    {% endfor %}
-
-    <!-- Pivot Suggestions -->
-    <h2>Pivot Suggestions</h2>
-    {% for pivot in pivots %}
-    <div class="card card-pivot">
-      <div class="card-title">{{ pivot.pivot|default('—') }}</div>
-      <div class="card-sub">{{ pivot.rationale|default('') }}</div>
-      <div class="card-sub" style="margin-top:4px;"><em>Evidence: {{ pivot.evidence_from_simulation|default('—') }}</em></div>
-      <span class="confidence-badge conf-{{ pivot.confidence|default('low') }}">{{ pivot.confidence|default('—')|title }} Confidence</span>
-    </div>
-    {% endfor %}
-
-    <!-- Disclaimer -->
-    <div class="disclaimer">
-      <strong>Important Notice:</strong> This report is generated by Futurus AI market simulation and is intended
-      as a directional tool to inform decision-making. Results represent modeled behavior of AI agents and are not
-      guarantees of real-world outcomes. The confidence score ({{ metrics.confidence_score|default('—') }}%) reflects
-      internal simulation consistency. Always validate insights with real customer research before making major decisions.
-    </div>
-
+  <!-- Cover -->
+  <div class="cover">
+    <div class="cover-label">Simulation Report</div>
+    <div class="cover-title">{{ business_name }}</div>
+    <div class="cover-desc">{{ idea_description }}</div>
+    <span class="cover-badge">AI-Powered Market Simulation</span>
   </div>
+
+  <!-- Key Metrics -->
+  <h2>Key Metrics</h2>
+  <table class="metrics-tbl"><tr>
+    <td><div class="mv mv-green">{{ metrics.adoption_rate|default('&mdash;') }}%</div><div class="ml">Adoption Rate</div></td>
+    <td><div class="mv mv-orange">{{ metrics.churn_rate|default('&mdash;') }}%</div><div class="ml">Churn Rate</div></td>
+    <td><div class="mv">{{ metrics.total_adopters|default('&mdash;') }}</div><div class="ml">Total Adopters</div></td>
+    <td><div class="mv">{{ metrics.viral_coefficient|default('&mdash;') }}</div><div class="ml">Viral Coefficient</div></td>
+    <td><div class="mv">{{ metrics.confidence_score|default('&mdash;') }}%</div><div class="ml">Confidence Score</div></td>
+  </tr></table>
+
+  <!-- Customer Segments -->
+  <h2>Customer Segment Analysis</h2>
+  <table class="data-tbl">
+    <thead><tr>
+      <th>Segment</th><th>Adoption Rate</th><th>Churn Rate</th><th>Referrals</th>
+    </tr></thead>
+    <tbody>
+      {% for p in personas %}
+      <tr>
+        <td class="seg">{{ p.segment|default('&mdash;') }}</td>
+        <td>{{ p.adoption_rate|default('&mdash;') }}%</td>
+        <td>{{ p.churn_rate|default('&mdash;') }}%</td>
+        <td>{{ p.referrals_generated|default('&mdash;') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Risk Assessment -->
+  <h2>Risk Assessment</h2>
+  <table class="data-tbl">
+    <thead><tr>
+      <th style="width:28%">Risk Factor</th>
+      <th style="width:11%">Probability</th>
+      <th style="width:11%">Impact</th>
+      <th>Mitigation Strategy</th>
+    </tr></thead>
+    <tbody>
+      {% for risk in risks %}
+      <tr>
+        <td class="risk-name">{{ risk.risk|default('&mdash;') }}</td>
+        <td class="risk-{{ risk.probability|default('low') }}">{{ risk.probability|default('&mdash;')|title }}</td>
+        <td class="risk-{{ risk.impact|default('low') }}">{{ risk.impact|default('&mdash;')|title }}</td>
+        <td class="mit">{{ risk.mitigation|default('&mdash;') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Key Insights -->
+  <h2>Key Insights</h2>
+  {% for insight in insights %}
+  <div class="card">
+    <div class="card-title">{{ insight.insight|default('&mdash;') }}</div>
+    <div class="card-body">{{ insight.supporting_evidence|default('') }}</div>
+    <div class="card-action">&#8594; {{ insight.actionability|default('&mdash;') }}</div>
+  </div>
+  {% endfor %}
+
+  <!-- Pivot Suggestions -->
+  <h2>Strategic Pivots</h2>
+  {% for pivot in pivots %}
+  <div class="card card-pivot">
+    <div class="card-title">{{ pivot.pivot|default('&mdash;') }}</div>
+    <div class="card-body">{{ pivot.rationale|default('') }}</div>
+    <div class="card-evidence">Evidence: {{ pivot.evidence_from_simulation|default('&mdash;') }}</div>
+    <span class="conf-badge conf-{{ pivot.confidence|default('low') }}">{{ pivot.confidence|default('&mdash;')|title }} Confidence</span>
+  </div>
+  {% endfor %}
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <strong>Important Notice:</strong> This report is generated by Futurus AI market simulation and is intended
+    as a directional tool to inform decision-making. Results represent modeled behavior of AI agents and are not
+    guarantees of real-world outcomes. The confidence score ({{ metrics.confidence_score|default('&mdash;') }}%)
+    reflects internal simulation consistency. Always validate insights with real customer research before making
+    major decisions.
+  </div>
+
 </body>
 </html>
 """
+
+
+def _load_logo_b64() -> str:
+    """Load the Futurus logo PNG and return as base64 string, or empty string if unavailable."""
+    try:
+        logo_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "frontend" / "public" / "brand" / "futurus-logo-dark.png"
+        )
+        if logo_path.exists():
+            return base64.b64encode(logo_path.read_bytes()).decode()
+    except Exception:
+        pass
+    return ""
 
 
 def _html_to_pdf_weasyprint(html: str) -> bytes | None:
@@ -483,6 +351,7 @@ def _build_html(report: Report, simulation_id: uuid.UUID, sim: Simulation | None
     risks = report.risk_matrix or []
     insights = report.key_insights or []
     pivots = report.pivot_suggestions or []
+    logo_b64 = _load_logo_b64()
     try:
         return template.render(
             business_name=(sim.business_name if sim else "Simulation") or "Simulation",
@@ -493,6 +362,7 @@ def _build_html(report: Report, simulation_id: uuid.UUID, sim: Simulation | None
             risks=risks,
             insights=insights,
             pivots=pivots,
+            logo_b64=logo_b64,
         )
     except Exception as e:
         logger.exception("report_pdf_template_failed", error=str(e))
@@ -511,6 +381,7 @@ def _build_html(report: Report, simulation_id: uuid.UUID, sim: Simulation | None
                 }
             ],
             pivots=[],
+            logo_b64=logo_b64,
         )
 
 

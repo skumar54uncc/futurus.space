@@ -3,10 +3,7 @@ Analyzes a raw user idea and extracts structured simulation fields using LLM.
 Generates follow-up questions when the idea is too vague.
 """
 import json
-from openai import AsyncOpenAI
-from core.config import settings
-
-client = AsyncOpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+from services.llm_router import call_llm
 
 VALID_VERTICALS = ["saas", "consumer_app", "marketplace", "physical_product", "service_business", "enterprise"]
 VALID_PRICING_MODELS = ["freemium", "subscription", "one-time", "usage", "hybrid"]
@@ -58,15 +55,14 @@ IMPORTANT RULES:
 - Questions should be in plain language, no jargon (e.g., "Who would use this?" not "Define your TAM")
 - Always return valid JSON, nothing else
 """
-    response = await client.chat.completions.create(
-        model=settings.llm_model_tier1,
+    content = await call_llm(
         messages=[{"role": "user", "content": prompt}],
+        agent_tier=1,
         max_tokens=1500,
         temperature=0.3,
-        response_format={"type": "json_object"},
+        json_mode=True,
     )
-
-    result = json.loads(response.choices[0].message.content)
+    result = json.loads(content)
     result = _validate_and_fix(result)
     return result
 
@@ -114,15 +110,14 @@ IMPORTANT RULES:
 - competitors should be REAL competitors in the specific location if possible
 - Always return valid JSON, nothing else
 """
-    response = await client.chat.completions.create(
-        model=settings.llm_model_tier1,
+    content = await call_llm(
         messages=[{"role": "user", "content": prompt}],
+        agent_tier=1,
         max_tokens=1500,
         temperature=0.3,
-        response_format={"type": "json_object"},
+        json_mode=True,
     )
-
-    result = json.loads(response.choices[0].message.content)
+    result = json.loads(content)
     result = _validate_and_fix(result)
     return result
 

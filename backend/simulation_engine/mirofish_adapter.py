@@ -7,6 +7,7 @@ This adapter:
 3. Extracts events from each turn
 4. Streams results as an async generator
 """
+import json
 import sys
 import os
 
@@ -135,100 +136,225 @@ class MiroFishAdapter:
             return "rejected"
         return None
 
+    @staticmethod
+    def _assign_tiers(personas: list) -> list:
+        """Sort agents by influence_score desc, assign _tier (1/2/3) to each."""
+        try:
+            from core.config import settings
+            tier1_count = settings.agent_tier1_count
+            tier2_count = settings.agent_tier2_count
+        except Exception:
+            tier1_count = 50
+            tier2_count = 200
+
+        sorted_personas = sorted(
+            personas, key=lambda p: p.get("influence_score", 0.0), reverse=True
+        )
+        for i, p in enumerate(sorted_personas):
+            if i < tier1_count:
+                p["_tier"] = 1
+            elif i < tier1_count + tier2_count:
+                p["_tier"] = 2
+            else:
+                p["_tier"] = 3
+        return sorted_personas
+
+    @staticmethod
+    async def _llm_prospect_decision(
+        agent: dict, turn: int, adoption_rate: float
+    ) -> dict:
+        """
+        LLM-powered decision for a Tier 1/2 prospect agent.
+        Always falls back to crowd_agent_decision() — never raises.
+        """
+        from services.llm_router import (
+            call_llm,
+            crowd_agent_decision,
+            CrowdAgentSkip,
+            AllProvidersExhausted,
+        )
+
+        budget_sens = agent.get("budget_sensitivity", 0.5)
+        price_sens = (
+            "high" if budget_sens > 0.65 else ("low" if budget_sens < 0.35 else "medium")
+        )
+
+        prompt = (
+            f"Simulate customer {agent['name']} ({agent['segment']}) at turn {turn}/40. "
+            f"Market adoption so far: {adoption_rate:.0%}. "
+            f"Motivation: {agent.get('main_motivation', 'N/A')}. "
+            f"Objection: {agent.get('main_objection', 'N/A')}. "
+            f"Adopts when: {agent.get('trigger_to_adopt', 'N/A')}. "
+            'Reply ONLY with JSON: {"event_type":"adopted|rejected|deferred|referred","description":"<1 sentence>"}'
+        )
+
+        try:
+            content = await call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                agent_tier=agent["_tier"],
+                temperature=0.85,
+                max_tokens=80,
+                json_mode=True,
+            )
+            data = json.loads(content)
+            event_type = data.get("event_type", "deferred")
+            if event_type not in ("adopted", "rejected", "deferred", "referred"):
+                event_type = "deferred"
+            return {
+                "event_type": event_type,
+                "event_description": str(data.get("description", ""))[:200],
+            }
+        except (CrowdAgentSkip, AllProvidersExhausted, Exception) as exc:
+            if not isinstance(exc, CrowdAgentSkip):
+                logger.warning(
+                    "llm_agent_fallback_to_crowd",
+                    agent=agent["name"],
+                    error=str(exc)[:120],
+                )
+            result = crowd_agent_decision(
+                segment=agent["segment"],
+                turn=turn,
+                current_adoption_rate=adoption_rate,
+                price_sensitivity=price_sens,
+            )
+            return {
+                "event_type": result["event_type"],
+                "event_description": result["event_description"],
+            }
+
     async def _run_mock_simulation(
         self, max_turns: int
     ) -> AsyncGenerator[dict, None]:
         import random
+        from services.llm_router import crowd_agent_decision
 
-        total_agents = len(self.personas)
+        # Assign LLM tiers before the loop
+        personas = self._assign_tiers(list(self.personas))
+        total_agents = len(personas)
         adopted_agents: set[str] = set()
         churned_agents: set[str] = set()
 
-        segment_groups: dict[str, list] = {}
-        for p in self.personas:
-            seg = p["segment"]
-            if seg not in segment_groups:
-                segment_groups[seg] = []
-            segment_groups[seg].append(p)
-
-        decision_speed_map = {
-            "fast": 8,
-            "medium": 18,
-            "slow": 30,
-            "fast-if-free": 10,
-        }
+        # Build segment lookup for event emission
+        segment_of: dict[str, str] = {p["name"]: p["segment"] for p in personas}
 
         for turn in range(1, max_turns + 1):
-            await asyncio.sleep(0.3)
             turn_events = []
+            current_adoption_rate = len(adopted_agents) / max(1, total_agents)
 
-            for seg, agents in segment_groups.items():
-                for agent in agents:
-                    agent_id = agent["name"]
-                    if agent_id in adopted_agents:
-                        churn_prob = agent.get("budget_sensitivity", 0.5) * 0.04
-                        if random.random() < churn_prob:
-                            churned_agents.add(agent_id)
-                            adopted_agents.discard(agent_id)
-                            turn_events.append(
-                                {
-                                    "agent_name": agent["name"],
-                                    "segment": seg,
-                                    "event_type": "churned",
-                                    "description": agent.get(
-                                        "trigger_to_churn",
-                                        "Product didn't meet expectations.",
-                                    ),
-                                }
-                            )
-                        elif (
-                            random.random()
-                            < agent.get("influence_score", 0.3) * 0.1
-                        ):
-                            turn_events.append(
-                                {
-                                    "agent_name": agent["name"],
-                                    "segment": seg,
-                                    "event_type": "referred",
-                                    "description": "Recommended the product to a colleague.",
-                                }
-                            )
-                    elif agent_id not in churned_agents:
-                        wom_factor = (
-                            1
-                            + (len(adopted_agents) / max(1, total_agents)) * 0.5
-                        )
-                        speed = decision_speed_map.get(
-                            agent.get("decision_speed", "medium"), 18
-                        )
-                        adopt_prob = (1 / speed) * wom_factor * (turn / max_turns)
-                        if random.random() < adopt_prob:
-                            adopted_agents.add(agent_id)
-                            turn_events.append(
-                                {
-                                    "agent_name": agent["name"],
-                                    "segment": seg,
-                                    "event_type": "adopted",
-                                    "description": agent.get(
-                                        "trigger_to_adopt",
-                                        "Saw value proposition, signed up.",
-                                    ),
-                                }
-                            )
-                        elif random.random() < 0.02:
-                            turn_events.append(
-                                {
-                                    "agent_name": agent["name"],
-                                    "segment": seg,
-                                    "event_type": "rejected",
-                                    "description": agent.get(
-                                        "main_objection",
-                                        "Not interested at this time.",
-                                    ),
-                                }
-                            )
+            # ── Collect prospects that need LLM calls this turn ───────────────
+            tier1_prospects = []
+            tier2_llm_prospects = []
+            for p in personas:
+                aid = p["name"]
+                if aid in adopted_agents or aid in churned_agents:
+                    continue
+                if p["_tier"] == 1:
+                    tier1_prospects.append(p)
+                elif p["_tier"] == 2 and turn % 4 == 0:
+                    tier2_llm_prospects.append(p)
 
-            self.cost_governor.record_turn_cost(0.02)
+            # ── Fire LLM calls concurrently per tier ──────────────────────────
+            tier1_decisions: dict[str, dict] = {}
+            tier2_decisions: dict[str, dict] = {}
+
+            if tier1_prospects:
+                results = await asyncio.gather(
+                    *[
+                        self._llm_prospect_decision(p, turn, current_adoption_rate)
+                        for p in tier1_prospects
+                    ],
+                    return_exceptions=True,
+                )
+                for p, res in zip(tier1_prospects, results):
+                    if isinstance(res, dict):
+                        tier1_decisions[p["name"]] = res
+
+            if tier2_llm_prospects:
+                results = await asyncio.gather(
+                    *[
+                        self._llm_prospect_decision(p, turn, current_adoption_rate)
+                        for p in tier2_llm_prospects
+                    ],
+                    return_exceptions=True,
+                )
+                for p, res in zip(tier2_llm_prospects, results):
+                    if isinstance(res, dict):
+                        tier2_decisions[p["name"]] = res
+
+            # ── Process every agent ───────────────────────────────────────────
+            for agent in personas:
+                aid = agent["name"]
+                seg = segment_of[aid]
+                tier = agent["_tier"]
+                budget_sens = agent.get("budget_sensitivity", 0.5)
+                price_sens = (
+                    "high"
+                    if budget_sens > 0.65
+                    else ("low" if budget_sens < 0.35 else "medium")
+                )
+
+                # Already adopted → churn / refer check (no LLM needed)
+                if aid in adopted_agents:
+                    churn_prob = budget_sens * 0.04
+                    if random.random() < churn_prob:
+                        churned_agents.add(aid)
+                        adopted_agents.discard(aid)
+                        turn_events.append({
+                            "agent_name": aid,
+                            "segment": seg,
+                            "event_type": "churned",
+                            "description": agent.get(
+                                "trigger_to_churn",
+                                "Product didn't meet expectations.",
+                            ),
+                        })
+                    elif random.random() < agent.get("influence_score", 0.3) * 0.1:
+                        turn_events.append({
+                            "agent_name": aid,
+                            "segment": seg,
+                            "event_type": "referred",
+                            "description": "Recommended the product to a colleague.",
+                        })
+                    continue
+
+                # Already churned → skip
+                if aid in churned_agents:
+                    continue
+
+                # Prospect → tiered decision
+                if tier == 1 and aid in tier1_decisions:
+                    decision = tier1_decisions[aid]
+                elif tier == 2 and aid in tier2_decisions:
+                    decision = tier2_decisions[aid]
+                else:
+                    # Tier 3 always, or Tier 2 on non-LLM turns
+                    res = crowd_agent_decision(
+                        seg, turn, current_adoption_rate, price_sens
+                    )
+                    decision = {
+                        "event_type": res["event_type"],
+                        "event_description": res["event_description"],
+                    }
+
+                event_type = decision["event_type"]
+
+                # Track state changes
+                if event_type in ("adopted", "referred"):
+                    adopted_agents.add(aid)
+
+                # Only log meaningful events (skip "deferred" — agent stays prospect)
+                if event_type in ("adopted", "rejected", "referred"):
+                    turn_events.append({
+                        "agent_name": aid,
+                        "segment": seg,
+                        "event_type": event_type,
+                        "description": decision["event_description"],
+                    })
+
+            # Cost: ~$0.001 per Tier 1 call, ~$0.0003 per Tier 2 call
+            self.cost_governor.record_turn_cost(
+                0.001 * len(tier1_prospects) + 0.0003 * len(tier2_llm_prospects)
+            )
             yield {
                 "turn": turn,
                 "agents_active": total_agents - len(churned_agents),

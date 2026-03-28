@@ -15,12 +15,23 @@ class Settings(BaseSettings):
     # SECURITY: Set to Clerk session JWT `aud` (Frontend API / instance URL) to enforce audience checks
     clerk_jwt_audience: str = ""
 
-    llm_api_key: str
+    # Legacy single-key (kept for backward compat; new code uses llm_router)
+    llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model_tier1: str = "gpt-4o"
     llm_model_tier2: str = "gpt-4o-mini"
 
-    zep_api_key: str
+    # ── Multi-provider LLM keys ───────────────────────────────────────────────
+    groq_api_keys: str = ""          # comma-separated list of up to 7 keys
+    gemini_api_key: str = ""
+    openrouter_api_key: str = ""
+
+    # ── Agent tier config ─────────────────────────────────────────────────────
+    agent_tier1_count: int = 50      # agents that get full LLM every turn
+    agent_tier2_count: int = 200     # agents that get LLM every 4 turns
+    # remaining agents = Tier 3, probabilistic only
+
+    zep_api_key: str = ""
 
     s3_bucket: str = Field(default="futurus-reports", validation_alias=AliasChoices("S3_BUCKET"))
     s3_access_key: str = ""
@@ -104,8 +115,14 @@ class Settings(BaseSettings):
             errs: list[str] = []
             if not self.database_url or len(self.database_url) < 12:
                 errs.append("DATABASE_URL must be set")
-            if not self.llm_api_key or len(self.llm_api_key) < 8:
-                errs.append("LLM_API_KEY must be set")
+            has_any_llm_key = (
+                (self.llm_api_key and len(self.llm_api_key) >= 8)
+                or bool(self.groq_api_keys.strip())
+                or bool(self.gemini_api_key.strip())
+                or bool(self.openrouter_api_key.strip())
+            )
+            if not has_any_llm_key:
+                errs.append("At least one LLM key must be set (LLM_API_KEY, GROQ_API_KEYS, GEMINI_API_KEY, or OPENROUTER_API_KEY)")
             if not self.clerk_secret_key or len(self.clerk_secret_key) < 20:
                 errs.append("CLERK_SECRET_KEY must be set")
             if not self.clerk_jwt_audience:

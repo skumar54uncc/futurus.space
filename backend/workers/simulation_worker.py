@@ -9,7 +9,9 @@ import uuid
 
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, "/mirofish")
+_mirofish_path = os.environ.get("MIROFISH_PATH", "/mirofish")
+if _mirofish_path and _mirofish_path not in sys.path:
+    sys.path.insert(0, _mirofish_path)
 
 from celery import Task
 from workers.celery_app import celery_app
@@ -51,13 +53,10 @@ def run_simulation(self, simulation_id: str):
     try:
         loop.run_until_complete(_run_simulation_async(simulation_id, self))
     finally:
-        # Dispose engine pool before closing loop so the next task gets fresh connections
-        try:
-            from core.database import engine
-            loop.run_until_complete(engine.dispose())
-        except Exception:
-            pass
         loop.close()
+        # NOTE: engine.dispose() is intentionally NOT called here.
+        # The connection pool is shared across tasks in this worker process.
+        # It is disposed only on worker shutdown via the signal handler below.
 
 
 def run_simulation_inline(simulation_id: str) -> None:
@@ -80,7 +79,7 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
     from simulation_engine.cost_governor import CostGovernor
     from schemas.simulation import SimulationCreateRequest
     from sqlalchemy import select
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -199,7 +198,7 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             report = await generate_report(sim, events_collected, db)
 
             sim.status = SimulationStatus.COMPLETED
-            sim.completed_at = datetime.utcnow()
+            sim.completed_at = datetime.now(timezone.utc)
             await db.commit()
 
             _emit_progress(simulation_id, "Report ready!", 100, report_id=str(report.id))
@@ -243,11 +242,11 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
 
 async def _update_status(db, sim, status):
     from models.simulation import SimulationStatus
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     sim.status = status
     if status == SimulationStatus.RUNNING:
-        sim.started_at = datetime.utcnow()
+        sim.started_at = datetime.now(timezone.utc)
     await db.commit()
 
 
@@ -298,3 +297,18 @@ def _emit_turn_update(
         redis_client.publish(f"sim:{simulation_id}", payload)
     except Exception:
         pass
+
+
+from celery.signals import worker_shutdown
+
+
+@worker_shutdown.connect
+def on_worker_shutdown(sender, **kwargs):
+    """Dispose DB connection pool cleanly when the Celery worker stops."""
+    import asyncio
+    from core.database import engine
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(engine.dispose())
+    finally:
+        loop.close()

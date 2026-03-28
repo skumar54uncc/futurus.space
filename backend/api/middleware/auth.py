@@ -6,7 +6,7 @@ from sqlalchemy import select
 from core.database import get_db
 from core.security import verify_clerk_token
 from models.user import User
-from datetime import datetime
+from datetime import datetime, timezone
 import structlog
 
 logger = structlog.get_logger()
@@ -35,14 +35,14 @@ async def get_current_user(
             id=user_id,
             email=email or f"{user_id}@clerk.user",
             full_name=payload.get("name", payload.get("first_name", "")),
-            plan_tier="open",
-            credit_balance=0,
+            plan_tier="free",
+            # credit_balance intentionally omitted — uses model default of 1
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
         logger.info("user_auto_created", user_id=user_id, email=user.email)
 
-    user.last_active_at = datetime.utcnow()
+    user.last_active_at = datetime.now(timezone.utc)
     await db.commit()
     return user

@@ -357,8 +357,9 @@ export function SimulationWizard() {
     try {
       const payload = buildSimulationCreatePayload(store.generated_fields);
       const { data } = await api.post("/api/simulations/", payload);
-      store.reset();
       router.push(`/simulation/${data.id}`);
+      // Reset after navigation starts so the phase change doesn't flash the idea screen
+      setTimeout(() => store.reset(), 500);
     } catch (err: unknown) {
       toast.error(formatSimulationLaunchError(err), { id: TOAST_ID_LAUNCH });
     } finally {

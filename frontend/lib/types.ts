@@ -1,3 +1,18 @@
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  plan_tier: string;
+  credit_balance: number;
+  simulations_this_month: number;
+  daily_limit: number;
+  billing_period_start: string;
+  subscription_status: string;
+  onboarding_completed: boolean;
+  created_at: string;
+}
+
 export type SimulationStatus =
   | "queued"
   | "building_seed"

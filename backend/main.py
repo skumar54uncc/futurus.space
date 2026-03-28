@@ -5,7 +5,7 @@ from pathlib import Path
 
 import redis.asyncio as aioredis
 import structlog
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import Depends, FastAPI, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,6 +15,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from api.middleware.auth import get_current_user
 from api.middleware.cost_guard import CostGuardMiddleware
 from api.middleware.rate_limiter import limiter, rate_limit_exceeded_handler
 from api.middleware.security_headers import SecurityHeadersMiddleware
@@ -23,6 +24,7 @@ from core.config import settings
 from core.database import AsyncSessionLocal, Base, engine
 from core.security import verify_clerk_token
 from models.simulation import Simulation
+from models.user import User
 
 logger = structlog.get_logger()
 
@@ -97,15 +99,24 @@ app.add_middleware(SlowAPIMiddleware)
 # SECURITY: Browser-oriented headers on API responses
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Local Next.js often runs on 3001+ when 3000 is busy; browsers send Origin with that port.
+# CORS: allow localhost in dev, restrict to futurus.dev in production
+_dev_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+_prod_origins = [
+    "https://futurus.dev",
+    "https://www.futurus.dev",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://futurus.dev",
-    ],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=_prod_origins + (_dev_origins if settings.environment != "production" else []),
+    allow_origin_regex=(
+        r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+        if settings.environment != "production"
+        else None
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -197,8 +208,21 @@ async def simulation_websocket(websocket: WebSocket, simulation_id: str):
                 await websocket.send_json(data)
                 if data.get("progress") in (-1, 100):
                     break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            "websocket_error",
+            simulation_id=simulation_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Connection interrupted. Please refresh.",
+                "progress": -1,
+            })
+        except Exception:
+            pass  # Client already disconnected — acceptable here
     finally:
         await pubsub.unsubscribe(f"sim:{simulation_id}")
         await r.aclose()
@@ -218,4 +242,41 @@ app.mount("/static/reports", StaticFiles(directory=str(static_dir)), name="repor
 @app.get("/health")
 @limiter.exempt
 async def health(request: Request):
-    return {"status": "ok", "service": "futurus-api"}
+    checks = {"api": "ok"}
+
+    # Check DB
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(select(1))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {str(e)[:50]}"
+
+    # Check Redis
+    try:
+        r = aioredis.from_url(settings.redis_url)
+        await r.ping()
+        await r.aclose()
+        checks["redis"] = "ok"
+    except Exception as e:
+        checks["redis"] = f"error: {str(e)[:50]}"
+
+    status = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    return {"status": status, "service": "futurus-api", "checks": checks}
+
+
+@app.get("/api/admin/llm-status")
+async def llm_status(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    SECURITY: Returns current LLM provider/key rotation state.
+    Requires valid Clerk session token AND admin/enterprise access.
+    """
+    if current_user.plan_tier != "enterprise":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from services.llm_router import get_providers
+    return {"providers": get_providers()}

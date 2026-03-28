@@ -5,10 +5,7 @@ instead of abstract marketing archetypes.
 """
 import json
 import random
-from openai import AsyncOpenAI
-from core.config import settings
-
-client = AsyncOpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+from services.llm_router import call_llm
 
 
 async def generate_personas(
@@ -82,14 +79,14 @@ RULES:
 - Include at least 2 segments that would be skeptical or unlikely to adopt
 """
     try:
-        response = await client.chat.completions.create(
-            model=settings.llm_model_tier1,
+        content = await call_llm(
             messages=[{"role": "user", "content": prompt}],
+            agent_tier=1,
             max_tokens=3000,
             temperature=0.3,
-            response_format={"type": "json_object"},
+            json_mode=True,
         )
-        result = json.loads(response.choices[0].message.content)
+        result = json.loads(content)
         segments = result.get("segments", [])
 
         if not segments:

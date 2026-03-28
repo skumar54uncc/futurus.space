@@ -16,7 +16,11 @@ async def get_me(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    return UserResponse.model_validate(current_user)
+    from services.credit_service import PLAN_DAILY_LIMITS
+
+    data = UserResponse.model_validate(current_user)
+    data.daily_limit = PLAN_DAILY_LIMITS.get(current_user.plan_tier, 1)
+    return data
 
 
 @router.patch("/me", response_model=UserResponse)

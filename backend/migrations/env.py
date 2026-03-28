@@ -9,11 +9,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from core.database import Base
+from core.config import settings
 from models import *
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override the hardcoded URL in alembic.ini with the actual DATABASE_URL from env
+config.set_main_option("sqlalchemy.url", settings.database_url)
 
 target_metadata = Base.metadata
 

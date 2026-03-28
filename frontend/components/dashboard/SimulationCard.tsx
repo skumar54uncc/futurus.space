@@ -164,48 +164,49 @@ export function SimulationCard({ sim, onDeleted, onUpdated }: SimulationCardProp
             />
           </div>
         )}
-        <div className="flex items-start justify-between gap-3 mb-2 shrink-0">
+        <div className="flex items-start justify-between gap-3 mb-3 shrink-0">
           <div className="flex-1 min-w-0">
             {sim.business_name.length > 42 ? (
               <Tooltip content={sim.business_name}>
-                <h3 className="font-medium text-[--text-primary] text-sm truncate cursor-default">{name}</h3>
+                <h3 className="font-semibold text-[--text-primary] text-base truncate cursor-default leading-snug">{name}</h3>
               </Tooltip>
             ) : (
-              <h3 className="font-medium text-[--text-primary] text-sm">{name}</h3>
+              <h3 className="font-semibold text-[--text-primary] text-base leading-snug">{name}</h3>
             )}
           </div>
           <StatusRow sim={sim} />
         </div>
 
-        <p className="text-xs text-[--text-secondary] mb-3 line-clamp-2 leading-relaxed min-h-[2.5rem]">
+        <p className="text-xs text-[--text-secondary] line-clamp-3 leading-relaxed">
           {cardIdeaExcerpt(sim.idea_description)}
         </p>
-        <p className="text-xs text-[--text-tertiary] mb-3 shrink-0">
+
+        <p className="text-xs text-[--text-tertiary] mt-4 mb-3 shrink-0">
           {sim.agent_count.toLocaleString()} agents · {sim.vertical} ·{" "}
           {formatDistanceToNow(new Date(sim.created_at), { addSuffix: true })}
         </p>
 
-        <div className="min-h-[5.25rem] mb-3 flex flex-col justify-end shrink-0">
-          {isRunning && (
-            <div>
-              <div className="flex justify-between text-xs text-[--text-tertiary] mb-1.5">
-                <span>
-                  Turn {sim.current_turn} / {sim.max_turns}
-                </span>
-                <span>{Math.round(progress)}%</span>
+        {(isRunning || isFailed) && (
+          <div className="mb-3 shrink-0">
+            {isRunning && (
+              <div>
+                <div className="flex justify-between text-xs text-[--text-tertiary] mb-1.5">
+                  <span>Turn {sim.current_turn} / {sim.max_turns}</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-[--bg-elevated] overflow-hidden">
+                  <div
+                    className="h-full bg-[--accent-primary] rounded-full transition-all duration-700 ease-out"
+                    style={{ width: `${Math.min(100, progress)}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-1.5 rounded-full bg-[--bg-elevated] overflow-hidden">
-                <div
-                  className="h-full bg-[--accent-primary] rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${Math.min(100, progress)}%` }}
-                />
-              </div>
-            </div>
-          )}
-          {isFailed && sim.error_message && (
-            <p className="text-xs text-[#f87171] line-clamp-2">{sim.error_message}</p>
-          )}
-        </div>
+            )}
+            {isFailed && sim.error_message && (
+              <p className="text-xs text-[#f87171] line-clamp-2">{sim.error_message}</p>
+            )}
+          </div>
+        )}
 
         <div className="mt-auto flex items-center gap-2 flex-wrap pt-1">
           {isCompleted && (

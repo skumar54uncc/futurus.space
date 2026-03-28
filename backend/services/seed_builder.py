@@ -8,15 +8,9 @@ import re
 from urllib.parse import urlparse
 
 import httpx
-from openai import AsyncOpenAI
 
-from core.config import settings
 from schemas.simulation import SimulationCreateRequest
-
-client = AsyncOpenAI(
-    api_key=settings.llm_api_key,
-    base_url=settings.llm_base_url,
-)
+from services.llm_router import call_llm
 
 # SECURITY: SSRF prevention for user-supplied competitor URLs
 ALLOWED_SCHEMES = frozenset({"http", "https"})
@@ -155,10 +149,9 @@ for this type of business if relevant.
 Be SPECIFIC and REALISTIC. Use actual numbers and real-world data points wherever possible.
 Write in present tense. No fluff.
 """
-    response = await client.chat.completions.create(
-        model=settings.llm_model_tier1,
+    return await call_llm(
         messages=[{"role": "user", "content": prompt}],
+        agent_tier=1,
         max_tokens=1000,
         temperature=0.3,
     )
-    return response.choices[0].message.content

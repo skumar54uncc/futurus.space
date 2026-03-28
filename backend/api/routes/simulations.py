@@ -93,7 +93,7 @@ async def create_simulation(
         agent_count=effective_agents,
         max_turns=effective_turns,
         ensemble_runs=limits["ensemble"],
-        plan_tier="open",
+        plan_tier=current_user.plan_tier,
         status=SimulationStatus.QUEUED,
     )
     db.add(sim)

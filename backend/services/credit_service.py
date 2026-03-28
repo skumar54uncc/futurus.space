@@ -1,19 +1,27 @@
 """
-SECURITY: Credit and monthly simulation quota enforcement (row-locked, race-safe).
+SECURITY: Daily simulation quota enforcement (row-locked, race-safe).
+Per-plan daily limits. Resets every 24 hours.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import settings
 from models.credit import CreditLedger
 from models.user import User
 
 logger = structlog.get_logger()
+
+# Plan daily limits — maps to plan_limits in config but enforced per-day
+PLAN_DAILY_LIMITS: dict[str, int] = {
+    "free":       1,    # 1 simulation per day (free LLM APIs have strict rate limits)
+    "open":       1,    # Same as free during beta
+    "pro":        10,   # 10 per day for pro users
+    "enterprise": -1,   # Unlimited
+}
 
 
 def _record_ledger(
@@ -32,7 +40,9 @@ def _record_ledger(
 
 async def check_and_deduct_credit(user: User, db: AsyncSession) -> None:
     """
-    SECURITY: Atomic quota check with SELECT FOR UPDATE to prevent concurrent bypass.
+    Enforce per-day simulation limits based on plan tier.
+    Uses SELECT FOR UPDATE to prevent race conditions.
+    Raises HTTP 429 if daily limit reached.
     """
     result = await db.execute(
         select(User).where(User.id == user.id).with_for_update()
@@ -42,66 +52,42 @@ async def check_and_deduct_credit(user: User, db: AsyncSession) -> None:
         raise HTTPException(status_code=404, detail="User not found")
 
     now = datetime.now(timezone.utc)
-    period_start = locked_user.billing_period_start
-    if period_start.tzinfo is None:
-        period_start = period_start.replace(tzinfo=timezone.utc)
+    last_reset = locked_user.billing_period_start
+    # billing_period_start is now always timezone-aware (DateTime(timezone=True))
 
-    # SECURITY: Reset monthly counter each billing month
-    if (now - period_start).days >= 30:
-        locked_user.simulations_this_month = 0
+    # Reset daily counter if it's been more than 24 hours
+    if (now - last_reset).total_seconds() >= 86400:
+        locked_user.simulations_this_month = 0   # "this_month" = daily counter (legacy name)
         locked_user.billing_period_start = now
+        last_reset = now
 
-    limits = settings.plan_limits.get(
-        locked_user.plan_tier, settings.plan_limits["free"]
-    )
-    monthly_limit = limits.get("sims_per_month", 1)
+    # Get daily limit for this user's plan
+    daily_limit = PLAN_DAILY_LIMITS.get(locked_user.plan_tier, 2)
 
-    if monthly_limit == -1:
-        # Unlimited (enterprise) — still count usage
-        locked_user.simulations_this_month += 1
-        await db.commit()
-        logger.info(
-            "simulation_quota_unlimited_increment",
-            user_id=user.id,
-            sims_this_month=locked_user.simulations_this_month,
+    if daily_limit != -1 and locked_user.simulations_this_month >= daily_limit:
+        resets_at = (last_reset + timedelta(days=1)).isoformat()
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "daily_limit_reached",
+                "message": (
+                    f"You've used your {daily_limit} simulation(s) for today. "
+                    "Since we use free-tier LLM APIs, we limit usage to keep things running for everyone. "
+                    "Come back tomorrow!"
+                ),
+                "resets_at": resets_at,
+                "plan": locked_user.plan_tier,
+            },
         )
-        return
 
-    if locked_user.simulations_this_month < monthly_limit:
-        locked_user.simulations_this_month += 1
-        await db.commit()
-        logger.info(
-            "simulation_quota_monthly_increment",
-            user_id=user.id,
-            sims_this_month=locked_user.simulations_this_month,
-            monthly_limit=monthly_limit,
-        )
-        return
-
-    if locked_user.credit_balance > 0:
-        locked_user.credit_balance -= 1
-        _record_ledger(
-            db,
-            locked_user.id,
-            -1,
-            locked_user.credit_balance,
-            "one_off_credit_used",
-        )
-        await db.commit()
-        logger.info(
-            "credit_balance_deducted",
-            user_id=user.id,
-            credits_remaining=locked_user.credit_balance,
-        )
-        return
-
-    raise HTTPException(
-        status_code=402,
-        detail={
-            "error": "insufficient_credits",
-            "message": f"You've reached your limit of {monthly_limit} simulations this month.",
-            "upgrade_url": f"https://{settings.app_domain}/billing",
-        },
+    locked_user.simulations_this_month += 1
+    await db.commit()
+    logger.info(
+        "simulation_credit_deducted",
+        user_id=user.id,
+        plan=locked_user.plan_tier,
+        used_today=locked_user.simulations_this_month,
+        daily_limit=daily_limit,
     )
 
 

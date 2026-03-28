@@ -10,12 +10,9 @@ import secrets
 import statistics
 import uuid
 from collections import Counter
-from openai import AsyncOpenAI
-from core.config import settings
 from models.simulation import Simulation, SimulationEvent, Report
 from sqlalchemy.ext.asyncio import AsyncSession
-
-client = AsyncOpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+from services.llm_router import call_llm
 
 
 async def generate_report(
@@ -263,14 +260,14 @@ IMPORTANT:
 - Be brutally honest about risks — don't sugarcoat
 """
     try:
-        response = await client.chat.completions.create(
-            model=settings.llm_model_tier1,
+        content = await call_llm(
             messages=[{"role": "user", "content": prompt}],
+            agent_tier=1,
             max_tokens=2500,
             temperature=0.2,
-            response_format={"type": "json_object"},
+            json_mode=True,
         )
-        return json.loads(response.choices[0].message.content)
+        return json.loads(content)
     except Exception:
         return {
             "failure_timeline": [],

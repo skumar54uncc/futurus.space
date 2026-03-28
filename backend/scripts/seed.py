@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from core.database import AsyncSessionLocal, engine, Base
 from models.user import User
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 async def seed():
@@ -27,8 +27,8 @@ async def seed():
                 plan_tier="open",
                 credit_balance=0,
                 subscription_status="inactive",
-                created_at=datetime.utcnow(),
-                last_active_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
+                last_active_at=datetime.now(timezone.utc),
                 onboarding_completed=True,
             )
             db.add(demo_user)

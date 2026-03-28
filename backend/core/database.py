@@ -4,14 +4,20 @@ from core.config import settings
 
 engine = create_async_engine(
     settings.database_url,
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    echo=settings.environment == "development",
+    pool_pre_ping=True,          # Detect stale connections
+    pool_size=5,                 # Conservative for Supabase free tier (25 max)
+    max_overflow=10,
+    pool_recycle=300,            # Recycle connections every 5 min
+    pool_timeout=30,             # Wait max 30s for a connection
 )
 
 AsyncSessionLocal = async_sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
 )
 
 
@@ -23,5 +29,6 @@ async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         try:
             yield session
-        finally:
-            await session.close()
+        except Exception:
+            await session.rollback()
+            raise

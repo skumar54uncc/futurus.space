@@ -1,10 +1,14 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, Integer, Float, JSON, ForeignKey, Enum, DateTime, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from core.database import Base
 import enum
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class SimulationStatus(str, enum.Enum):
@@ -52,9 +56,9 @@ class Simulation(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     notify_on_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     report: Mapped["Report"] = relationship("Report", back_populates="simulation", uselist=False)
     events: Mapped[list["SimulationEvent"]] = relationship("SimulationEvent", back_populates="simulation")
@@ -64,13 +68,15 @@ class SimulationEvent(Base):
     __tablename__ = "simulation_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    simulation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("simulations.id"))
+    simulation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("simulations.id", ondelete="CASCADE")
+    )
     turn: Mapped[int] = mapped_column(Integer, nullable=False)
     agent_name: Mapped[str] = mapped_column(String(255), nullable=False)
     agent_segment: Mapped[str] = mapped_column(String(100), nullable=False)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     event_description: Mapped[str] = mapped_column(Text, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     simulation: Mapped["Simulation"] = relationship("Simulation", back_populates="events")
 
@@ -79,7 +85,9 @@ class Report(Base):
     __tablename__ = "reports"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    simulation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("simulations.id"), unique=True)
+    simulation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("simulations.id", ondelete="CASCADE"), unique=True
+    )
 
     summary_metrics: Mapped[dict] = mapped_column(JSON, nullable=False)
     adoption_curve: Mapped[list] = mapped_column(JSON, nullable=False)
@@ -95,6 +103,6 @@ class Report(Base):
     investor_pdf_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     share_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     simulation: Mapped["Simulation"] = relationship("Simulation", back_populates="report")
