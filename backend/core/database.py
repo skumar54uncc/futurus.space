@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool, QueuePool
@@ -10,9 +12,15 @@ def _pgbouncer_style_url(database_url: str) -> bool:
     return "supabase" in u or "pooler" in u or ":6543" in u
 
 
-# Always disable asyncpg's statement cache when using PgBouncer (transaction pooler, etc.).
-# URL heuristics alone miss some Supabase formats; duplicate detection is brittle, so we always set 0.
-_ASYNCPG_CONNECT_ARGS = {"statement_cache_size": 0}
+# PgBouncer (e.g. Supabase pooler / :6543): asyncpg + SQLAlchemy both cache/use named PREPAREs.
+# - statement_cache_size: asyncpg client cache (see asyncpg DuplicatePreparedStatementError hint).
+# - prepared_statement_cache_size: SQLAlchemy asyncpg dialect LRU (defaults to 100 if omitted).
+# - prepared_statement_name_func: avoid reused names like __asyncpg_stmt_1__ on pooled backends.
+_ASYNCPG_CONNECT_ARGS = {
+    "statement_cache_size": 0,
+    "prepared_statement_cache_size": 0,
+    "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4().hex}__",
+}
 
 if _pgbouncer_style_url(settings.database_url):
     # Open a fresh DBAPI connection per checkout — avoids stale server-side prepared stmt names via PgBouncer.
