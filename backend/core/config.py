@@ -28,6 +28,28 @@ class Settings(BaseSettings):
             return f"postgresql+asyncpg://{rest}"
         return s
 
+    @field_validator("redis_url", mode="before")
+    @classmethod
+    def normalize_redis_url(cls, v: Any) -> Any:
+        """
+        SlowAPI/limits expects a URI (redis:// or rediss://), not `redis-cli --tls -u ...`.
+        Upstash TLS endpoints should use rediss:// for redis-py.
+        """
+        if not isinstance(v, str):
+            return v
+        s = v.strip()
+        if "rediss://" in s:
+            idx = s.index("rediss://")
+            s = s[idx:].strip().split()[0]
+            return s
+        if "redis://" in s:
+            idx = s.index("redis://")
+            s = s[idx:].strip().split()[0]
+            if "upstash.io" in s.lower():
+                return "rediss://" + s[len("redis://") :]
+            return s
+        return s
+
     clerk_secret_key: str
     clerk_jwt_key: str = ""
     # SECURITY: Set to Clerk session JWT `aud` (Frontend API / instance URL) to enforce audience checks
