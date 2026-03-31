@@ -11,7 +11,7 @@ export function Footer() {
             <p className="text-sm text-slate-500 mt-3 leading-relaxed">
               See what is about to be. Multi-agent simulation for anyone with an idea worth testing.
             </p>
-            <p className="text-xs text-slate-700 mt-3 italic">
+            <p className="text-xs text-slate-400 mt-3 italic">
               From Latin <em>futurus</em>: that which is about to be.
             </p>
           </div>
@@ -94,7 +94,7 @@ export function Footer() {
               Shailesh Kumar
             </a>
           </p>
-          <p className="font-serif italic text-xs text-slate-600 text-center sm:text-right">
+          <p className="font-serif italic text-xs text-slate-400 text-center sm:text-right">
             futurus — Latin: that which is about to be
           </p>
         </div>
