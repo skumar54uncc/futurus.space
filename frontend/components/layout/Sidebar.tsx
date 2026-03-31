@@ -164,7 +164,7 @@ export function Sidebar() {
               </p>
             </div>
           </div>
-          <p className="text-xs text-slate-700 mt-3 px-1">Powered by MiroFish</p>
+          <p className="text-xs text-slate-400 mt-3 px-1">Powered by MiroFish</p>
         </div>
       </div>
     </aside>

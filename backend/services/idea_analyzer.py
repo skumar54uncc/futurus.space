@@ -5,12 +5,8 @@ Generates follow-up questions when the idea is too vague.
 import asyncio
 import json
 
+from core.config import settings
 from services.llm_router import AllProvidersExhausted, call_llm
-
-# Stay under typical reverse-proxy limits (e.g. DO App Platform ~100s) so clients get JSON, not 504.
-_IDEA_LLM_READ_TIMEOUT = 40.0
-_IDEA_MAX_PROVIDERS = 2
-_IDEA_TOTAL_DEADLINE = 88.0
 
 VALID_VERTICALS = ["saas", "consumer_app", "marketplace", "physical_product", "service_business", "enterprise"]
 VALID_PRICING_MODELS = ["freemium", "subscription", "one-time", "usage", "hybrid"]
@@ -67,13 +63,13 @@ IMPORTANT RULES:
             call_llm(
                 messages=[{"role": "user", "content": prompt}],
                 agent_tier=1,
-                max_tokens=1500,
+                max_tokens=1200,
                 temperature=0.3,
                 json_mode=True,
-                read_timeout=_IDEA_LLM_READ_TIMEOUT,
-                max_provider_attempts=_IDEA_MAX_PROVIDERS,
+                read_timeout=settings.idea_analysis_llm_read_timeout_seconds,
+                max_provider_attempts=settings.idea_analysis_max_provider_attempts,
             ),
-            timeout=_IDEA_TOTAL_DEADLINE,
+            timeout=settings.idea_analysis_total_deadline_seconds,
         )
     except asyncio.TimeoutError as exc:
         raise AllProvidersExhausted(
@@ -132,13 +128,13 @@ IMPORTANT RULES:
             call_llm(
                 messages=[{"role": "user", "content": prompt}],
                 agent_tier=1,
-                max_tokens=1500,
+                max_tokens=1200,
                 temperature=0.3,
                 json_mode=True,
-                read_timeout=_IDEA_LLM_READ_TIMEOUT,
-                max_provider_attempts=_IDEA_MAX_PROVIDERS,
+                read_timeout=settings.idea_analysis_llm_read_timeout_seconds,
+                max_provider_attempts=settings.idea_analysis_max_provider_attempts,
             ),
-            timeout=_IDEA_TOTAL_DEADLINE,
+            timeout=settings.idea_analysis_total_deadline_seconds,
         )
     except asyncio.TimeoutError as exc:
         raise AllProvidersExhausted(

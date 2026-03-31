@@ -7,11 +7,8 @@ import asyncio
 import json
 import random
 
+from core.config import settings
 from services.llm_router import call_llm
-
-_PERSONA_READ_TIMEOUT = 45.0
-_PERSONA_MAX_PROVIDERS = 2
-_PERSONA_TOTAL_DEADLINE = 95.0
 
 
 async def generate_personas(
@@ -92,10 +89,10 @@ RULES:
                 max_tokens=3000,
                 temperature=0.3,
                 json_mode=True,
-                read_timeout=_PERSONA_READ_TIMEOUT,
-                max_provider_attempts=_PERSONA_MAX_PROVIDERS,
+                read_timeout=settings.persona_generation_llm_read_timeout_seconds,
+                max_provider_attempts=2,
             ),
-            timeout=_PERSONA_TOTAL_DEADLINE,
+            timeout=settings.persona_generation_total_deadline_seconds,
         )
         result = json.loads(content)
         segments = result.get("segments", [])

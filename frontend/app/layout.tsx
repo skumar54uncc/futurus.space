@@ -6,6 +6,12 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { getFuturusClerkAppearance } from "@/lib/clerk-appearance";
 import "./globals.css";
 
+const clerkSignInFallback =
+  process.env.NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL || "/dashboard";
+const clerkSignUpFallback =
+  process.env.NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL || "/new";
+const vercelAnalyticsEnabled = process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === "true";
+
 export const metadata: Metadata = {
   title: "Futurus — See what is about to be",
   description:
@@ -41,7 +47,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider appearance={getFuturusClerkAppearance()}>
+    <ClerkProvider
+      appearance={getFuturusClerkAppearance()}
+      signInFallbackRedirectUrl={clerkSignInFallback}
+      signUpFallbackRedirectUrl={clerkSignUpFallback}
+    >
       <html lang="en" className="dark" suppressHydrationWarning>
         <head>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -77,8 +87,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               },
             }}
           />
-          <Analytics />
-          <SpeedInsights />
+          {vercelAnalyticsEnabled ? (
+            <>
+              <Analytics />
+              <SpeedInsights />
+            </>
+          ) : null}
         </body>
       </html>
     </ClerkProvider>

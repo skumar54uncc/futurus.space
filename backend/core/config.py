@@ -153,6 +153,40 @@ class Settings(BaseSettings):
     # Comma-separated extra CORS origins for production (e.g. https://myapp.vercel.app)
     cors_extra_origins: str = ""
 
+    # SlowAPI storage: empty → use redis_url. "memory" / "memory://" → in-process (no sync Redis hop per request).
+    # Use memory on a single App Platform instance to avoid blocking the asyncio loop on Upstash latency.
+    # For multiple replicas, keep default (Redis) so limits are shared.
+    rate_limit_storage_uri: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "FUTURUS_RATE_LIMIT_STORAGE_URI",
+            "RATE_LIMIT_STORAGE_URI",
+        ),
+    )
+
+    # Idea analysis LLM bounds — keep total under ~55s so strict gateways (60s) return JSON instead of 504.
+    idea_analysis_total_deadline_seconds: float = Field(
+        default=52.0,
+        validation_alias=AliasChoices("FUTURUS_IDEA_ANALYSIS_DEADLINE_SECONDS"),
+    )
+    idea_analysis_llm_read_timeout_seconds: float = Field(
+        default=22.0,
+        validation_alias=AliasChoices("FUTURUS_IDEA_ANALYSIS_READ_TIMEOUT"),
+    )
+    idea_analysis_max_provider_attempts: int = Field(
+        default=2,
+        validation_alias=AliasChoices("FUTURUS_IDEA_ANALYSIS_MAX_PROVIDERS"),
+    )
+
+    persona_generation_total_deadline_seconds: float = Field(
+        default=55.0,
+        validation_alias=AliasChoices("FUTURUS_PERSONA_GENERATION_DEADLINE_SECONDS"),
+    )
+    persona_generation_llm_read_timeout_seconds: float = Field(
+        default=24.0,
+        validation_alias=AliasChoices("FUTURUS_PERSONA_READ_TIMEOUT"),
+    )
+
     # If True, run simulations in a daemon thread (no Celery/Redis worker required).
     # Default True so local dev works with `uvicorn` only. Set false in production when using Celery.
     simulation_worker_inline: bool = Field(

@@ -9,10 +9,20 @@ from fastapi.responses import JSONResponse
 
 from core.config import settings
 
-# SECURITY: Distributed limits via Redis for multi-worker / Railway deploys
+
+def _resolve_rate_limit_storage_uri() -> str:
+    raw = (settings.rate_limit_storage_uri or "").strip().lower()
+    if raw in ("memory", "memory://"):
+        return "memory://"
+    if raw:
+        return settings.rate_limit_storage_uri.strip()
+    return settings.redis_url
+
+
+# SECURITY: default Redis for multi-instance; optional memory:// avoids sync Redis in the event loop (single worker).
 limiter = Limiter(
     key_func=get_remote_address,
-    storage_uri=settings.redis_url,
+    storage_uri=_resolve_rate_limit_storage_uri(),
     default_limits=["200/minute"],
 )
 
