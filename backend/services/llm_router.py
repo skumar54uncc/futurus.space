@@ -266,12 +266,18 @@ async def _call_provider(
 
     key.record()
 
+    # DigitalOcean serverless inference: prefer max_completion_tokens; max_tokens is deprecated there.
+    # Groq / OpenRouter / Gemini OpenAI-compat: use max_tokens.
     body: dict = {
         "model": provider.model,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": max_tokens,
     }
+    if provider.name.startswith("digitalocean"):
+        body["max_completion_tokens"] = max_tokens
+    else:
+        body["max_tokens"] = max_tokens
+
     if json_mode and _use_openai_json_response_format(provider):
         body["response_format"] = {"type": "json_object"}
 
@@ -316,7 +322,12 @@ async def _call_provider(
             raise AllProvidersExhausted(f"{provider.name} HTTP {resp.status_code}: {resp.text[:200]}")
 
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        msg = data["choices"][0].get("message") or {}
+        content = msg.get("content")
+        if content is None or (isinstance(content, str) and not content.strip()):
+            raise AllProvidersExhausted(
+                f"{provider.name}: empty or missing message.content in response"
+            )
         logger.info(
             "llm_call_ok",
             provider=provider.name,
