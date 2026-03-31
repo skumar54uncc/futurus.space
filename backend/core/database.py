@@ -2,9 +2,27 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase
 from core.config import settings
 
+
+def _asyncpg_connect_args(database_url: str) -> dict:
+    """
+    Supabase transaction pooler (PgBouncer) does not support asyncpg's default prepared
+    statement cache → DuplicatePreparedStatementError. Disable cache for pooler URLs.
+    """
+    u = database_url.lower()
+    if (
+        "pooler.supabase" in u
+        or ".pooler." in u
+        or ":6543/" in u
+        or ":6543?" in u
+    ):
+        return {"statement_cache_size": 0}
+    return {}
+
+
 engine = create_async_engine(
     settings.database_url,
     echo=settings.environment == "development",
+    connect_args=_asyncpg_connect_args(settings.database_url),
     pool_pre_ping=True,          # Detect stale connections
     pool_size=5,                 # Conservative for Supabase free tier (25 max)
     max_overflow=10,
