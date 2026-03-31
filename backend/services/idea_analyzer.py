@@ -7,6 +7,7 @@ import json
 
 from core.config import settings
 from services.llm_router import AllProvidersExhausted, call_llm
+from services.llm_text_json import coerce_llm_json_text
 
 VALID_VERTICALS = ["saas", "consumer_app", "marketplace", "physical_product", "service_business", "enterprise"]
 VALID_PRICING_MODELS = ["freemium", "subscription", "one-time", "usage", "hybrid"]
@@ -75,7 +76,7 @@ IMPORTANT RULES:
         raise AllProvidersExhausted(
             "Idea analysis timed out — inference may be slow. Try again in a moment."
         ) from exc
-    result = json.loads(content)
+    result = json.loads(coerce_llm_json_text(content))
     result = _validate_and_fix(result)
     return result
 
@@ -140,7 +141,7 @@ IMPORTANT RULES:
         raise AllProvidersExhausted(
             "Idea refinement timed out — inference may be slow. Try again in a moment."
         ) from exc
-    result = json.loads(content)
+    result = json.loads(coerce_llm_json_text(content))
     result = _validate_and_fix(result)
     return result
 

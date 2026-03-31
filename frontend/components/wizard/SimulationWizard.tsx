@@ -2,6 +2,7 @@
 import { useWizardStore } from "@/store/wizardStore";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { isAxiosError } from "axios";
 import { api } from "@/lib/api";
 import { OPEN_ACCESS_AGENT_CAP, OPEN_ACCESS_TURN_CAP } from "@/lib/simulationLimits";
 import { FreeTierLimitsNotice } from "@/components/landing/FreeTierLimitsNotice";
@@ -283,6 +284,16 @@ const TOAST_ID_ANALYZE = "wizard-analyze";
 const TOAST_ID_REFINE = "wizard-refine";
 const TOAST_ID_LAUNCH = "wizard-launch";
 
+function toastDetailFromApiError(err: unknown, maxLen = 220): string | null {
+  if (!isAxiosError(err)) return null;
+  const d = err.response?.data;
+  if (typeof d?.detail === "string" && d.detail.trim()) {
+    const s = d.detail.trim();
+    return s.length <= maxLen ? s : `${s.slice(0, maxLen)}…`;
+  }
+  return null;
+}
+
 export function SimulationWizard() {
   const store = useWizardStore();
   const [loading, setLoading] = useState(false);
@@ -339,8 +350,12 @@ export function SimulationWizard() {
       );
       store.setGeneratedFields(normalizeGeneratedFieldsFromApi(data as Record<string, unknown>));
       store.setPhase("review");
-    } catch {
-      toast.error("Failed to process your answers. Please try again.", { id: TOAST_ID_REFINE });
+    } catch (err) {
+      const hint = toastDetailFromApiError(err);
+      toast.error(
+        hint ?? "Failed to process your answers. Please try again.",
+        { id: TOAST_ID_REFINE }
+      );
     } finally {
       setLoading(false);
       requestLock.current = false;

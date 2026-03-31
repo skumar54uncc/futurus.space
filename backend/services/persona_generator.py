@@ -9,6 +9,7 @@ import random
 
 from core.config import settings
 from services.llm_router import call_llm
+from services.llm_text_json import coerce_llm_json_text
 
 
 async def generate_personas(
@@ -94,7 +95,7 @@ RULES:
             ),
             timeout=settings.persona_generation_total_deadline_seconds,
         )
-        result = json.loads(content)
+        result = json.loads(coerce_llm_json_text(content))
         segments = result.get("segments", [])
 
         if not segments:

@@ -22,11 +22,15 @@ const nextConfig = {
     ];
   },
   async rewrites() {
+    const backend =
+      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
     return [
       {
         source: "/api/backend/:path*",
-        destination: `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/:path*`,
+        destination: `${backend}/:path*`,
       },
+      { source: "/favicon.ico", destination: "/brand/futurus-mark.svg" },
+      { source: "/favicon.png", destination: "/brand/futurus-mark.svg" },
     ];
   },
 };

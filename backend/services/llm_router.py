@@ -244,6 +244,14 @@ def get_providers() -> list[dict]:
 
 # ── Core HTTP call ────────────────────────────────────────────────────────────
 
+def _use_openai_json_response_format(provider: Provider) -> bool:
+    """
+    response_format: {type: json_object} is OpenAI-specific. DigitalOcean-hosted models
+    (Qwen, Llama, etc.) often return HTTP 500 when this field is sent — rely on prompt-only JSON instead.
+    """
+    return not provider.name.startswith("digitalocean")
+
+
 async def _call_provider(
     provider: Provider,
     messages: list[dict],
@@ -264,7 +272,7 @@ async def _call_provider(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    if json_mode:
+    if json_mode and _use_openai_json_response_format(provider):
         body["response_format"] = {"type": "json_object"}
 
     headers = {
@@ -356,6 +364,7 @@ async def call_llm(
     chain = _tier1_chain if agent_tier == 1 else _tier2_chain
     rt = read_timeout if read_timeout is not None else LLM_DEFAULT_READ_TIMEOUT
     attempts = 0
+    last_failure: str | None = None
 
     for provider in chain:
         if not provider.is_available():
@@ -368,14 +377,17 @@ async def call_llm(
             return await _call_provider(
                 provider, messages, temperature, max_tokens, json_mode, read_timeout=rt
             )
-        except AllProvidersExhausted:
+        except AllProvidersExhausted as exc:
+            last_failure = str(exc)
             continue
         except Exception as exc:
             logger.warning("llm_provider_unexpected", provider=provider.name, error=str(exc))
+            last_failure = str(exc)
             continue
 
     raise AllProvidersExhausted(
-        "Daily simulation quota reached. All providers exhausted. Resets at midnight."
+        last_failure
+        or "All LLM providers failed. Check DigitalOcean inference (model id, key) or add GROQ_API_KEYS as fallback."
     )
 
 
