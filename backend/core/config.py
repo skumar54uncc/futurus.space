@@ -1,9 +1,40 @@
 import warnings
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+
+def _strip_sslmode_for_asyncpg(url: str) -> str:
+    """
+    asyncpg does not accept libpq's sslmode= query param (TypeError: unexpected keyword sslmode).
+    Map common sslmode values to asyncpg's ssl= query param.
+    """
+    if "sslmode" not in url.lower():
+        return url
+    parsed = urlparse(url)
+    pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    new_pairs: list[tuple[str, str]] = []
+    sslmode_effect: str | None = None
+    for k, v in pairs:
+        if k.lower() == "sslmode":
+            vl = v.lower()
+            if vl == "disable":
+                sslmode_effect = "off"
+            elif vl in ("require", "verify-ca", "verify-full", "prefer", "allow"):
+                sslmode_effect = "on"
+            continue
+        new_pairs.append((k, v))
+    has_ssl = any(x[0].lower() == "ssl" for x in new_pairs)
+    if not has_ssl:
+        if sslmode_effect == "on":
+            new_pairs.append(("ssl", "true"))
+        elif sslmode_effect == "off":
+            new_pairs.append(("ssl", "false"))
+    new_query = urlencode(new_pairs)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
 
 class Settings(BaseSettings):
@@ -16,6 +47,7 @@ class Settings(BaseSettings):
         """
         Supabase and others default to postgresql://… — SQLAlchemy then picks the sync
         psycopg2 dialect (ModuleNotFoundError without psycopg2). Futurus uses asyncpg only.
+        Strip sslmode=… — asyncpg rejects it; use ssl=true|false instead.
         """
         if not isinstance(v, str):
             return v
@@ -25,7 +57,11 @@ class Settings(BaseSettings):
         scheme, rest = s.split("://", 1)
         scheme_l = scheme.lower()
         if scheme_l in ("postgres", "postgresql"):
-            return f"postgresql+asyncpg://{rest}"
+            s = f"postgresql+asyncpg://{rest}"
+        elif scheme_l == "postgresql+asyncpg":
+            s = f"postgresql+asyncpg://{rest}"
+        if s.startswith("postgresql+asyncpg://"):
+            s = _strip_sslmode_for_asyncpg(s)
         return s
 
     @field_validator("redis_url", mode="before")
