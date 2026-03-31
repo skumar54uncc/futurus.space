@@ -160,6 +160,7 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices(
             "FUTURUS_RATE_LIMIT_STORAGE_URI",
+            "FUTURUS_RATE_LIMIT_STORAGE",
             "RATE_LIMIT_STORAGE_URI",
         ),
     )
