@@ -1,3 +1,4 @@
+import json
 import threading
 import uuid
 
@@ -22,6 +23,7 @@ from schemas.simulation import (
 )
 from services.credit_service import check_and_deduct_credit
 from services.idea_analyzer import analyze_idea, refine_idea
+from services.llm_router import AllProvidersExhausted
 from services.persona_generator import generate_personas
 from workers.simulation_worker import run_simulation, run_simulation_inline
 
@@ -43,8 +45,20 @@ async def analyze_idea_endpoint(
     body: AnalyzeIdeaRequest,
     current_user: User = Depends(get_current_user),
 ):
-    result = await analyze_idea(body.raw_idea)
-    return result
+    try:
+        return await analyze_idea(body.raw_idea)
+    except AllProvidersExhausted as exc:
+        logger.warning("analyze_idea_llm_exhausted", detail=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis is temporarily unavailable. Check LLM API keys and quotas, then try again.",
+        ) from exc
+    except json.JSONDecodeError as exc:
+        logger.warning("analyze_idea_invalid_json", error=str(exc))
+        raise HTTPException(
+            status_code=502,
+            detail="The analysis model returned invalid data. Please try again.",
+        ) from exc
 
 
 @router.post("/refine-idea")
@@ -54,11 +68,23 @@ async def refine_idea_endpoint(
     body: RefineIdeaRequest,
     current_user: User = Depends(get_current_user),
 ):
-    result = await refine_idea(
-        body.raw_idea,
-        [a.model_dump() for a in body.answers],
-    )
-    return result
+    try:
+        return await refine_idea(
+            body.raw_idea,
+            [a.model_dump() for a in body.answers],
+        )
+    except AllProvidersExhausted as exc:
+        logger.warning("refine_idea_llm_exhausted", detail=str(exc))
+        raise HTTPException(
+            status_code=503,
+            detail="Refinement is temporarily unavailable. Check LLM API keys and quotas, then try again.",
+        ) from exc
+    except json.JSONDecodeError as exc:
+        logger.warning("refine_idea_invalid_json", error=str(exc))
+        raise HTTPException(
+            status_code=502,
+            detail="The analysis model returned invalid data. Please try again.",
+        ) from exc
 
 
 @router.post("/", response_model=SimulationResponse)

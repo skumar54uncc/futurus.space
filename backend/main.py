@@ -99,7 +99,8 @@ app.add_middleware(SlowAPIMiddleware)
 # SECURITY: Browser-oriented headers on API responses
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS: allow localhost in dev; production includes futurus.dev, Vercel, and CORS_EXTRA_ORIGINS
+# CORS: futurus.dev + CORS_EXTRA_ORIGINS; regex always allows local dev and any *.vercel.app preview.
+# (Previously Vercel previews only matched when ENVIRONMENT=production, so a missing env on DO blocked all previews.)
 _dev_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -110,14 +111,16 @@ _prod_origins = [
 ]
 _extra = [o.strip() for o in (settings.cors_extra_origins or "").split(",") if o.strip()]
 
+_CORS_ORIGIN_REGEX = (
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    r"|"
+    r"^https://[a-zA-Z0-9][a-zA-Z0-9._-]*\.vercel\.app$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_prod_origins + _extra + (_dev_origins if settings.environment != "production" else []),
-    allow_origin_regex=(
-        r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
-        if settings.environment != "production"
-        else r"^https://[a-zA-Z0-9][a-zA-Z0-9.-]*\.vercel\.app$"
-    ),
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
