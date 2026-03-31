@@ -2,8 +2,8 @@
 Multi-provider LLM router with per-key rate tracking, rotation, and graceful fallback.
 
 Provider priority:
-  Tier 1 (quality): Groq 70b → Gemini → OpenRouter
-  Tier 2 (volume):  Groq 8b  → Groq 70b → Gemini
+  Tier 1 (quality): DigitalOcean Gradient (if MODEL_ACCESS_KEY set) → Groq 70b → Gemini → OpenRouter
+  Tier 2 (volume):  DO tier-2 model → Groq 8b → Groq 70b → Gemini
 
 Never exposes raw API keys in logs — only key_0, key_1, etc.
 """
@@ -181,10 +181,45 @@ def _build_chains() -> None:
         rpd_limit=200,
     )
 
-    # Tier 1: best quality
-    _tier1_chain = [groq_70b, gemini, openrouter]
+    do_key = (settings.digitalocean_model_access_key or "").strip()
+    do_tier1_list: list[Provider] = []
+    do_tier2_list: list[Provider] = []
+    if do_key:
+        do_base = settings.digitalocean_inference_base_url.rstrip("/")
+        m1 = (settings.llm_model_tier1 or "alibaba-qwen3-32b").strip()
+        m2 = (settings.llm_model_tier2 or m1).strip()
+        # Generous limits; DO bills per token — adjust if you hit HTTP 429s
+        do_tier1_list.append(
+            Provider(
+                name="digitalocean_tier1",
+                base_url=do_base,
+                model=m1,
+                api_keys=[ApiKey(0, do_key)],
+                rpm_limit=120,
+                rpd_limit=100_000,
+            )
+        )
+        do_tier2_list.append(
+            Provider(
+                name="digitalocean_tier2",
+                base_url=do_base,
+                model=m2,
+                api_keys=[ApiKey(0, do_key)],
+                rpm_limit=120,
+                rpd_limit=100_000,
+            )
+        )
+        logger.info(
+            "llm_router_digitalocean_enabled",
+            base_url=do_base,
+            tier1_model=m1,
+            tier2_model=m2,
+        )
+
+    # Tier 1: best quality (DO first when configured)
+    _tier1_chain = do_tier1_list + [groq_70b, gemini, openrouter]
     # Tier 2: high volume
-    _tier2_chain = [groq_8b, groq_70b, gemini]
+    _tier2_chain = do_tier2_list + [groq_8b, groq_70b, gemini]
     _built = True
 
 

@@ -26,6 +26,19 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
 
+    # DigitalOcean Gradient serverless inference (OpenAI-compatible /v1/chat/completions)
+    digitalocean_model_access_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "DIGITALOCEAN_MODEL_ACCESS_KEY",
+            "MODEL_ACCESS_KEY",
+        ),
+    )
+    digitalocean_inference_base_url: str = Field(
+        default="https://inference.do-ai.run/v1",
+        validation_alias=AliasChoices("DIGITALOCEAN_INFERENCE_BASE_URL"),
+    )
+
     # ── Agent tier config ─────────────────────────────────────────────────────
     agent_tier1_count: int = 50      # agents that get full LLM every turn
     agent_tier2_count: int = 200     # agents that get LLM every 4 turns
@@ -60,6 +73,9 @@ class Settings(BaseSettings):
 
     max_cost_per_simulation_usd: float = 15.00
     backend_url: str = "http://localhost:8000"
+
+    # Comma-separated extra CORS origins for production (e.g. https://myapp.vercel.app)
+    cors_extra_origins: str = ""
 
     # If True, run simulations in a daemon thread (no Celery/Redis worker required).
     # Default True so local dev works with `uvicorn` only. Set false in production when using Celery.
@@ -108,6 +124,16 @@ class Settings(BaseSettings):
         object.__setattr__(self, "s3_bucket", merged_bucket)
         return self
 
+    def openai_compatible_llm_key(self) -> str:
+        """Bearer token for OpenAI-compatible APIs (DO Gradient, OpenAI, Groq-style passthrough)."""
+        return (self.digitalocean_model_access_key or self.llm_api_key or "").strip()
+
+    def openai_compatible_llm_base(self) -> str:
+        """Base URL without trailing slash (…/v1/chat/completions is appended by clients)."""
+        if (self.digitalocean_model_access_key or "").strip():
+            return self.digitalocean_inference_base_url.rstrip("/")
+        return (self.llm_base_url or "https://api.openai.com/v1").rstrip("/")
+
     @model_validator(mode="after")
     def validate_critical_settings(self) -> "Settings":
         # SECURITY: Fail fast in production when secrets are clearly placeholders
@@ -117,12 +143,16 @@ class Settings(BaseSettings):
                 errs.append("DATABASE_URL must be set")
             has_any_llm_key = (
                 (self.llm_api_key and len(self.llm_api_key) >= 8)
+                or bool((self.digitalocean_model_access_key or "").strip())
                 or bool(self.groq_api_keys.strip())
                 or bool(self.gemini_api_key.strip())
                 or bool(self.openrouter_api_key.strip())
             )
             if not has_any_llm_key:
-                errs.append("At least one LLM key must be set (LLM_API_KEY, GROQ_API_KEYS, GEMINI_API_KEY, or OPENROUTER_API_KEY)")
+                errs.append(
+                    "At least one LLM key must be set (MODEL_ACCESS_KEY / DIGITALOCEAN_MODEL_ACCESS_KEY, "
+                    "LLM_API_KEY, GROQ_API_KEYS, GEMINI_API_KEY, or OPENROUTER_API_KEY)"
+                )
             if not self.clerk_secret_key or len(self.clerk_secret_key) < 20:
                 errs.append("CLERK_SECRET_KEY must be set")
             if not self.clerk_jwt_audience:

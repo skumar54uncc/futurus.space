@@ -19,6 +19,8 @@ from simulation_engine.cost_governor import CostGovernor
 from typing import AsyncGenerator
 import structlog
 
+from core.config import settings
+
 logger = structlog.get_logger()
 
 
@@ -38,10 +40,12 @@ class MiroFishAdapter:
                 agent_configs=self._personas_to_mirofish_format(),
                 config={
                     "max_turns": max_turns,
-                    "llm_api_key": os.getenv("LLM_API_KEY"),
-                    "llm_base_url": os.getenv("LLM_BASE_URL"),
-                    "llm_model": os.getenv("LLM_MODEL_TIER2"),
-                    "zep_api_key": os.getenv("ZEP_API_KEY"),
+                    "llm_api_key": settings.openai_compatible_llm_key()
+                    or os.getenv("LLM_API_KEY", ""),
+                    "llm_base_url": settings.openai_compatible_llm_base()
+                    or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
+                    "llm_model": os.getenv("LLM_MODEL_TIER2") or settings.llm_model_tier2,
+                    "zep_api_key": os.getenv("ZEP_API_KEY") or settings.zep_api_key,
                 },
             )
         except ImportError:

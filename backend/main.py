@@ -99,7 +99,7 @@ app.add_middleware(SlowAPIMiddleware)
 # SECURITY: Browser-oriented headers on API responses
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS: allow localhost in dev, restrict to futurus.dev in production
+# CORS: allow localhost in dev; production includes futurus.dev, Vercel, and CORS_EXTRA_ORIGINS
 _dev_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -108,14 +108,15 @@ _prod_origins = [
     "https://futurus.dev",
     "https://www.futurus.dev",
 ]
+_extra = [o.strip() for o in (settings.cors_extra_origins or "").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_prod_origins + (_dev_origins if settings.environment != "production" else []),
+    allow_origins=_prod_origins + _extra + (_dev_origins if settings.environment != "production" else []),
     allow_origin_regex=(
         r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
         if settings.environment != "production"
-        else None
+        else r"^https://[a-zA-Z0-9][a-zA-Z0-9.-]*\.vercel\.app$"
     ),
     allow_credentials=True,
     allow_methods=["*"],

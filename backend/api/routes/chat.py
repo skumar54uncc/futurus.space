@@ -16,7 +16,10 @@ from schemas.report import ChatRequest, ChatResponse
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
-client = AsyncOpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+client = AsyncOpenAI(
+    api_key=settings.openai_compatible_llm_key(),
+    base_url=settings.openai_compatible_llm_base(),
+)
 
 
 @router.post("/{simulation_id}", response_model=ChatResponse)
