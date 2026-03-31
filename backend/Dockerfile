@@ -2,8 +2,10 @@
 FROM python:3.11-slim
 WORKDIR /app
 
-# WeasyPrint + GDK-Pixbuf loaders (PDF export); xhtml2pdf works without these but both are in requirements.txt
+# WeasyPrint pulls pycairo — needs a compiler + *-dev headers at pip install time, not only runtime .so libs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential pkg-config \
+    libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev libglib2.0-dev \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
     libffi8 shared-mime-info fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/*
