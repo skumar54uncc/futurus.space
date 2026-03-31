@@ -17,6 +17,12 @@ import structlog
 
 logger = structlog.get_logger()
 
+# Per-provider HTTP timeouts. Keep total wall time under ~90s so gateways (e.g. DO App Platform ~100s) return JSON, not 504.
+HTTPX_CONNECT = 15.0
+HTTPX_WRITE = 45.0
+HTTPX_POOL = 10.0
+LLM_DEFAULT_READ_TIMEOUT = 55.0
+
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
 
@@ -244,6 +250,7 @@ async def _call_provider(
     temperature: float,
     max_tokens: int,
     json_mode: bool,
+    read_timeout: float = LLM_DEFAULT_READ_TIMEOUT,
 ) -> str:
     key = provider.next_key()
     if key is None:
@@ -265,8 +272,14 @@ async def _call_provider(
         "Content-Type": "application/json",
     }
 
+    timeout = httpx.Timeout(
+        connect=HTTPX_CONNECT,
+        read=read_timeout,
+        write=HTTPX_WRITE,
+        pool=HTTPX_POOL,
+    )
     try:
-        async with httpx.AsyncClient(timeout=45.0) as http:
+        async with httpx.AsyncClient(timeout=timeout) as http:
             resp = await http.post(
                 f"{provider.base_url}/chat/completions",
                 json=body,
@@ -322,6 +335,9 @@ async def call_llm(
     temperature: float = 0.7,
     max_tokens: int = 300,
     json_mode: bool = False,
+    *,
+    read_timeout: float | None = None,
+    max_provider_attempts: int | None = None,
 ) -> str:
     """
     Route an LLM call through the appropriate provider chain.
@@ -329,19 +345,29 @@ async def call_llm(
     agent_tier=1  → Groq 70b → Gemini → OpenRouter  (best quality)
     agent_tier=2  → Groq 8b  → Groq 70b → Gemini    (high volume)
     agent_tier=3  → raises CrowdAgentSkip immediately (no API call)
+
+    max_provider_attempts limits how many providers are tried (stays under HTTP gateway timeouts).
+    read_timeout sets per-request read seconds (default LLM_DEFAULT_READ_TIMEOUT).
     """
     if agent_tier == 3:
         raise CrowdAgentSkip("Tier 3 agents use probabilistic logic")
 
     _build_chains()
     chain = _tier1_chain if agent_tier == 1 else _tier2_chain
+    rt = read_timeout if read_timeout is not None else LLM_DEFAULT_READ_TIMEOUT
+    attempts = 0
 
     for provider in chain:
         if not provider.is_available():
             logger.info("llm_provider_skipped", provider=provider.name, reason="unavailable")
             continue
+        if max_provider_attempts is not None and attempts >= max_provider_attempts:
+            break
+        attempts += 1
         try:
-            return await _call_provider(provider, messages, temperature, max_tokens, json_mode)
+            return await _call_provider(
+                provider, messages, temperature, max_tokens, json_mode, read_timeout=rt
+            )
         except AllProvidersExhausted:
             continue
         except Exception as exc:

@@ -298,9 +298,11 @@ export function SimulationWizard() {
     requestLock.current = true;
     setLoading(true);
     try {
-      const { data } = await api.post("/api/simulations/analyze-idea", {
-        raw_idea: store.raw_idea,
-      });
+      const { data } = await api.post(
+        "/api/simulations/analyze-idea",
+        { raw_idea: store.raw_idea },
+        { timeout: 120_000 }
+      );
 
       const { confidence, follow_up_questions, ...raw } = data;
 
@@ -330,10 +332,11 @@ export function SimulationWizard() {
     requestLock.current = true;
     setLoading(true);
     try {
-      const { data } = await api.post("/api/simulations/refine-idea", {
-        raw_idea: store.raw_idea,
-        answers: store.answers,
-      });
+      const { data } = await api.post(
+        "/api/simulations/refine-idea",
+        { raw_idea: store.raw_idea, answers: store.answers },
+        { timeout: 120_000 }
+      );
       store.setGeneratedFields(normalizeGeneratedFieldsFromApi(data as Record<string, unknown>));
       store.setPhase("review");
     } catch {

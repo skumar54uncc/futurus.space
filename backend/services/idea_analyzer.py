@@ -2,8 +2,15 @@
 Analyzes a raw user idea and extracts structured simulation fields using LLM.
 Generates follow-up questions when the idea is too vague.
 """
+import asyncio
 import json
-from services.llm_router import call_llm
+
+from services.llm_router import AllProvidersExhausted, call_llm
+
+# Stay under typical reverse-proxy limits (e.g. DO App Platform ~100s) so clients get JSON, not 504.
+_IDEA_LLM_READ_TIMEOUT = 40.0
+_IDEA_MAX_PROVIDERS = 2
+_IDEA_TOTAL_DEADLINE = 88.0
 
 VALID_VERTICALS = ["saas", "consumer_app", "marketplace", "physical_product", "service_business", "enterprise"]
 VALID_PRICING_MODELS = ["freemium", "subscription", "one-time", "usage", "hybrid"]
@@ -55,13 +62,23 @@ IMPORTANT RULES:
 - Questions should be in plain language, no jargon (e.g., "Who would use this?" not "Define your TAM")
 - Always return valid JSON, nothing else
 """
-    content = await call_llm(
-        messages=[{"role": "user", "content": prompt}],
-        agent_tier=1,
-        max_tokens=1500,
-        temperature=0.3,
-        json_mode=True,
-    )
+    try:
+        content = await asyncio.wait_for(
+            call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                agent_tier=1,
+                max_tokens=1500,
+                temperature=0.3,
+                json_mode=True,
+                read_timeout=_IDEA_LLM_READ_TIMEOUT,
+                max_provider_attempts=_IDEA_MAX_PROVIDERS,
+            ),
+            timeout=_IDEA_TOTAL_DEADLINE,
+        )
+    except asyncio.TimeoutError as exc:
+        raise AllProvidersExhausted(
+            "Idea analysis timed out — inference may be slow. Try again in a moment."
+        ) from exc
     result = json.loads(content)
     result = _validate_and_fix(result)
     return result
@@ -110,13 +127,23 @@ IMPORTANT RULES:
 - competitors should be REAL competitors in the specific location if possible
 - Always return valid JSON, nothing else
 """
-    content = await call_llm(
-        messages=[{"role": "user", "content": prompt}],
-        agent_tier=1,
-        max_tokens=1500,
-        temperature=0.3,
-        json_mode=True,
-    )
+    try:
+        content = await asyncio.wait_for(
+            call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                agent_tier=1,
+                max_tokens=1500,
+                temperature=0.3,
+                json_mode=True,
+                read_timeout=_IDEA_LLM_READ_TIMEOUT,
+                max_provider_attempts=_IDEA_MAX_PROVIDERS,
+            ),
+            timeout=_IDEA_TOTAL_DEADLINE,
+        )
+    except asyncio.TimeoutError as exc:
+        raise AllProvidersExhausted(
+            "Idea refinement timed out — inference may be slow. Try again in a moment."
+        ) from exc
     result = json.loads(content)
     result = _validate_and_fix(result)
     return result

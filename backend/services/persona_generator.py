@@ -3,9 +3,15 @@ Generates realistic customer personas based on the business idea, location, and 
 Uses LLM to create real-world demographic segments (age groups, occupations, lifestyles)
 instead of abstract marketing archetypes.
 """
+import asyncio
 import json
 import random
+
 from services.llm_router import call_llm
+
+_PERSONA_READ_TIMEOUT = 45.0
+_PERSONA_MAX_PROVIDERS = 2
+_PERSONA_TOTAL_DEADLINE = 95.0
 
 
 async def generate_personas(
@@ -79,12 +85,17 @@ RULES:
 - Include at least 2 segments that would be skeptical or unlikely to adopt
 """
     try:
-        content = await call_llm(
-            messages=[{"role": "user", "content": prompt}],
-            agent_tier=1,
-            max_tokens=3000,
-            temperature=0.3,
-            json_mode=True,
+        content = await asyncio.wait_for(
+            call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                agent_tier=1,
+                max_tokens=3000,
+                temperature=0.3,
+                json_mode=True,
+                read_timeout=_PERSONA_READ_TIMEOUT,
+                max_provider_attempts=_PERSONA_MAX_PROVIDERS,
+            ),
+            timeout=_PERSONA_TOTAL_DEADLINE,
         )
         result = json.loads(content)
         segments = result.get("segments", [])
