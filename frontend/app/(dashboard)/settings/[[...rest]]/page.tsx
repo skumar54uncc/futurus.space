@@ -1,8 +1,8 @@
 "use client";
 
 import { UserProfile } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
 import { PageShell } from "@/components/layout/PageShell";
+import { futurusClerkTheme, getClerkLogoUrlForClient } from "@/lib/clerk-appearance";
 import { Shield, Sparkles, KeyRound, Mail } from "lucide-react";
 
 /**
@@ -65,14 +65,10 @@ export default function SettingsPage() {
             path="/settings"
             routing="path"
             appearance={{
-              baseTheme: dark,
-              variables: {
-                colorPrimary: "#818cf8",
-                colorBackground: "hsl(234, 32%, 7%)",
-                colorInputBackground: "hsl(234, 28%, 11%)",
-                colorText: "hsl(214, 32%, 94%)",
-                colorTextSecondary: "hsl(215, 20%, 55%)",
-                borderRadius: "0.625rem",
+              ...futurusClerkTheme,
+              layout: {
+                logoImageUrl:
+                  getClerkLogoUrlForClient() ?? "https://futurus.dev/brand/futurus-logo-dark.svg",
               },
               elements: {
                 rootBox: "w-full max-w-full",
