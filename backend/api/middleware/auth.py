@@ -1,4 +1,6 @@
 """JWT verification middleware using Clerk."""
+from typing import Annotated
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,13 +12,22 @@ from datetime import datetime, timezone
 import structlog
 
 logger = structlog.get_logger()
-security = HTTPBearer()
+# auto_error=False: return 401 with a clear message instead of generic 403 "Not authenticated"
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Depends(security),
+    ],
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing Authorization bearer token. Sign in on the Futurus app first; opening this URL in a browser tab does not send your session.",
+        )
     try:
         payload = await verify_clerk_token(credentials.credentials)
     except Exception:
