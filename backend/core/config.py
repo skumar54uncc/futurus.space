@@ -1,7 +1,7 @@
 import warnings
 from typing import Any
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -9,6 +9,24 @@ from functools import lru_cache
 class Settings(BaseSettings):
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url_for_asyncpg(cls, v: Any) -> Any:
+        """
+        Supabase and others default to postgresql://… — SQLAlchemy then picks the sync
+        psycopg2 dialect (ModuleNotFoundError without psycopg2). Futurus uses asyncpg only.
+        """
+        if not isinstance(v, str):
+            return v
+        s = v.strip()
+        if "://" not in s:
+            return v
+        scheme, rest = s.split("://", 1)
+        scheme_l = scheme.lower()
+        if scheme_l in ("postgres", "postgresql"):
+            return f"postgresql+asyncpg://{rest}"
+        return s
 
     clerk_secret_key: str
     clerk_jwt_key: str = ""
