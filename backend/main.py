@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+from slowapi.middleware import SlowAPIASGIMiddleware
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -155,8 +155,10 @@ app = FastAPI(
 # SECURITY: Rate limits (SlowAPI)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-# SECURITY: Apply default route limits from SlowAPI limiter
-app.add_middleware(SlowAPIMiddleware)
+# SlowAPIASGIMiddleware avoids BaseHTTPMiddleware + _inject_headers isinstance bug
+# ("response must be an instance of starlette.responses.Response") seen with SlowAPIMiddleware
+# when headers_enabled=True and other BaseHTTPMiddleware wrap the stack.
+app.add_middleware(SlowAPIASGIMiddleware)
 
 # SECURITY: Browser-oriented headers on API responses
 app.add_middleware(SecurityHeadersMiddleware)
