@@ -117,6 +117,15 @@ export interface KeyInsight {
   actionability: string;
 }
 
+/** Plain-English hero verdict (from API or derived from metrics for older reports). */
+export interface ViabilitySummary {
+  verdict_label: string;
+  headline: string;
+  will_it_work: string;
+  what_could_go_wrong: string;
+  what_would_help: string;
+}
+
 export interface Report {
   id: string;
   simulation_id: string;
@@ -127,6 +136,7 @@ export interface Report {
   risk_matrix: Risk[];
   pivot_suggestions: PivotSuggestion[];
   key_insights: KeyInsight[];
+  viability_summary?: ViabilitySummary | null;
   share_token?: string;
   pdf_url?: string;
   created_at: string;

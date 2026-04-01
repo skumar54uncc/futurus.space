@@ -9,6 +9,7 @@ import { PersonaBreakdown } from "@/components/report/PersonaBreakdown";
 import { FailureTimeline } from "@/components/report/FailureTimeline";
 import { RiskMatrix } from "@/components/report/RiskMatrix";
 import { PivotSuggestions } from "@/components/report/PivotSuggestions";
+import { ViabilitySummaryCard } from "@/components/report/ViabilitySummaryCard";
 import { ReportChartSkeleton } from "@/components/ui/skeleton";
 
 const AdoptionCurveChart = dynamic(
@@ -26,6 +27,7 @@ export function SharedReportView({ report }: { report: Report }) {
         <span className="text-xs text-[--text-tertiary] font-mono shrink-0">Shared simulation report</span>
       </header>
       <ReportShell simulation={null} report={report} publicShare>
+        <ViabilitySummaryCard report={report} />
         <SummaryCards metrics={report.summary_metrics} />
         <AdoptionCurveChart data={report.adoption_curve} />
         <PersonaBreakdown data={report.persona_breakdown} />

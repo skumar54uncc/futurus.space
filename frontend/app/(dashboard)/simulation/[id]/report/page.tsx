@@ -14,6 +14,7 @@ import { RiskMatrix } from "@/components/report/RiskMatrix";
 import { PivotSuggestions } from "@/components/report/PivotSuggestions";
 import { ReportChat } from "@/components/report/ReportChat";
 import { ExportActions } from "@/components/report/ExportActions";
+import { ViabilitySummaryCard } from "@/components/report/ViabilitySummaryCard";
 import { ReportSkeleton, ReportChartSkeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Button } from "@/components/ui/button";
@@ -116,13 +117,14 @@ export default function ReportPage() {
         </AlertDialog.Portal>
       </AlertDialog.Root>
 
+      <ViabilitySummaryCard report={report} />
       <SummaryCards metrics={report.summary_metrics} />
       <AdoptionCurveChart data={report.adoption_curve} />
       <PersonaBreakdown data={report.persona_breakdown} />
       <FailureTimeline events={report.failure_timeline} />
       <RiskMatrix risks={report.risk_matrix} />
       <PivotSuggestions suggestions={report.pivot_suggestions} insights={report.key_insights} />
-      <ExportActions report={report} simulationId={simulationId} />
+      <ExportActions report={report} />
       <ReportChat simulationId={simulationId} />
     </ReportShell>
   );

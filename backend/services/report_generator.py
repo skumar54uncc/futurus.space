@@ -20,11 +20,83 @@ from services.llm_text_json import coerce_llm_json_text
 logger = structlog.get_logger()
 
 
+def _heuristic_viability_summary(summary: dict) -> dict:
+    """Fallback plain-English verdict from aggregate metrics (no LLM)."""
+    ar = float(summary.get("adoption_rate", 0) or 0)
+    cr = float(summary.get("churn_rate", 0) or 0)
+    viral = float(summary.get("viral_coefficient", 0) or 0)
+    adopters = int(summary.get("total_adopters", 0) or 0)
+
+    if cr >= 60 and ar < 40:
+        label = "struggling"
+        headline = "As modeled, this idea would likely struggle to keep customers."
+        will = (
+            f"The simulation ended with about {ar:.0f}% adoption but very high churn relative to adopters "
+            f"({cr:.0f}% churn rate). That pattern usually means retention or product–market fit needs work before scaling."
+        )
+        wrong = (
+            "Word-of-mouth may not save the day if people try the product and leave quickly. "
+            "Pricing, trust, logistics, or the core promise may be misaligned with what simulated customers expected."
+        )
+        help_ = (
+            "Tighten the offer for one segment first, improve onboarding and support, and validate willingness to pay "
+            "with real interviews. Consider the pivot ideas below."
+        )
+    elif ar >= 45 and cr <= 40 and viral >= 0.35:
+        label = "promising"
+        headline = "There are encouraging signals — but execution still decides the outcome."
+        will = (
+            f"Roughly {ar:.0f}% adoption with moderate churn ({cr:.0f}%) and referral activity (viral coefficient {viral:.2f}) "
+            "suggests some people see value. That is not a guarantee in the real market, but it is a better baseline than a dead launch."
+        )
+        wrong = (
+            "Scaling too fast, underpricing, or weak operations could still burn trust. "
+            "Competitors and macro conditions are not fully captured in this sandbox."
+        )
+        help_ = (
+            "Double down on the segments that adopted most, measure real churn reasons, and keep unit economics honest as you grow."
+        )
+    else:
+        label = "mixed"
+        headline = "Results are mixed — worth refining before you bet big."
+        will = (
+            f"About {ar:.0f}% of agents adopted and churn ran around {cr:.0f}% (relative to adoption events). "
+            f"Roughly {adopters} adopters in the run. The simulation is not a crystal ball, but it is not a clean ‘green light’ either."
+        )
+        wrong = (
+            "You may be attracting interest without durable retention, or winning some segments while losing others. "
+            "Misread demand or weak differentiation often shows up as this kind of split result."
+        )
+        help_ = (
+            "Clarify the primary customer, run a cheaper real-world test (landing + waitlist or pilot), and address the highest risks in the matrix below."
+        )
+
+    return {
+        "verdict_label": label,
+        "headline": headline,
+        "will_it_work": will,
+        "what_could_go_wrong": wrong,
+        "what_would_help": help_,
+    }
+
+
+def _merge_viability_summary(llm_part: object, summary: dict) -> dict:
+    base = _heuristic_viability_summary(summary)
+    if not isinstance(llm_part, dict):
+        return base
+    for key in ("verdict_label", "headline", "will_it_work", "what_could_go_wrong", "what_would_help"):
+        val = llm_part.get(key)
+        if isinstance(val, str) and val.strip():
+            base[key] = val.strip()
+    return base
+
+
 async def generate_report(
     simulation: Simulation, events: list[SimulationEvent], db: AsyncSession
 ) -> Report:
     metrics = _compute_metrics(events, simulation)
     qualitative = await _run_report_agent(simulation, metrics, events)
+    viability = _merge_viability_summary(qualitative.get("viability_summary"), metrics["summary"])
 
     report = Report(
         id=uuid.uuid4(),
@@ -36,6 +108,7 @@ async def generate_report(
         risk_matrix=qualitative.get("risk_matrix", []),
         pivot_suggestions=qualitative.get("pivot_suggestions", []),
         key_insights=qualitative.get("key_insights", []),
+        viability_summary=viability,
         share_token=secrets.token_urlsafe(24),
     )
 
@@ -240,6 +313,13 @@ Key events (sample):
 Analyze this and return ONLY valid JSON with these fields:
 
 {{
+  "viability_summary": {{
+    "verdict_label": "struggling|mixed|promising",
+    "headline": "<one short punchy line — will this idea work as simulated?>",
+    "will_it_work": "<3-5 sentences in plain English: yes / no / maybe and WHY, citing adoption %, churn %, and referrals from the metrics>",
+    "what_could_go_wrong": "<3-5 sentences: concrete failure modes tied to the simulation and real markets>",
+    "what_would_help": "<3-5 sentences: practical improvements, not generic advice>"
+  }},
   "failure_timeline": [
     {{"turn": <int>, "month_equivalent": <float>, "event": "<describe what happened and WHY in real-world terms>", "impact_level": "low|medium|high|critical", "affected_segment": "<segment name>"}},
     ...at least 4 failure points...
@@ -259,6 +339,7 @@ Analyze this and return ONLY valid JSON with these fields:
 }}
 
 IMPORTANT:
+- viability_summary must be readable by a non-expert founder — no jargon, no markdown asterisks
 - Reference REAL industry statistics and benchmarks where possible (e.g., "average coffee shop failure rate is 60% in first year")
 - Compare simulation results to real-world norms (e.g., "your 28% churn is above the industry average of 15-20%")
 - Use the actual customer segment names from the simulation, not generic terms
@@ -283,6 +364,16 @@ IMPORTANT:
             error=str(exc),
         )
         return {
+            "viability_summary": {
+                "verdict_label": "unclear",
+                "headline": "We could not finish the written analysis for this run.",
+                "will_it_work": (
+                    "The numbers below still reflect your simulation. The AI step that writes the narrative did not complete — "
+                    "often a temporary API or quota issue."
+                ),
+                "what_could_go_wrong": "Without the full narrative, rely on the metrics and charts, or run a new simulation.",
+                "what_would_help": "Try again later or ensure backup LLM keys (e.g. Groq) are configured on the server.",
+            },
             "failure_timeline": [],
             "risk_matrix": [{"risk": "Analysis unavailable", "probability": "medium", "impact": "medium", "mitigation": "Retry report generation"}],
             "pivot_suggestions": [],

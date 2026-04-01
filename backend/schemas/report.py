@@ -72,6 +72,7 @@ class ReportResponse(BaseModel):
     risk_matrix: list
     pivot_suggestions: list
     key_insights: list
+    viability_summary: Optional[dict] = None
     ensemble_variance: Optional[dict] = None
     pdf_url: Optional[str] = None
     investor_pdf_url: Optional[str] = None

@@ -96,6 +96,8 @@ class Report(Base):
     risk_matrix: Mapped[list] = mapped_column(JSON, nullable=False)
     pivot_suggestions: Mapped[list] = mapped_column(JSON, nullable=False)
     key_insights: Mapped[list] = mapped_column(JSON, nullable=False)
+    # Plain-English verdict for the report hero (LLM + heuristic fallback); nullable for legacy rows
+    viability_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     ensemble_variance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
