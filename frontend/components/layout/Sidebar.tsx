@@ -61,6 +61,14 @@ export function Sidebar() {
       : null;
   const exhausted = remaining !== null && remaining <= 0;
 
+  const freeApiLimitNote =
+    profile && remaining !== null ? (
+      <span className="block mt-1.5 pt-1.5 border-t border-white/10 text-[11px] font-normal text-slate-300 leading-snug">
+        Since I&apos;m using free LLM API keys for this project, I have to limit usage — your plan allows{" "}
+        {profile.daily_limit} simulation{profile.daily_limit !== 1 ? "s" : ""} per day.
+      </span>
+    ) : null;
+
   return (
     <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
       <div className="flex flex-col flex-grow border-r border-[hsl(234,25%,14%)] bg-[hsl(234,33%,8%)] pt-5 overflow-y-auto">
@@ -110,9 +118,22 @@ export function Sidebar() {
           <div className="mx-3 mb-3">
             <Tooltip
               content={
-                exhausted
-                  ? `Daily limit reached. ${getResetLabel(profile.billing_period_start)}. We use free-tier LLM APIs, so usage is limited to keep things running for everyone.`
-                  : `${remaining} of ${profile.daily_limit} simulation(s) left today. ${getResetLabel(profile.billing_period_start)}.`
+                exhausted ? (
+                  <>
+                    <span className="block">
+                      Daily limit reached. {getResetLabel(profile.billing_period_start)}.
+                    </span>
+                    {freeApiLimitNote}
+                  </>
+                ) : (
+                  <>
+                    <span className="block">
+                      {remaining} of {profile.daily_limit} simulation(s) left today.{" "}
+                      {getResetLabel(profile.billing_period_start)}.
+                    </span>
+                    {freeApiLimitNote}
+                  </>
+                )
               }
               side="right"
             >

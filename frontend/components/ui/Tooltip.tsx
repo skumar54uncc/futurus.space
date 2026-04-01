@@ -18,7 +18,7 @@ export function Tooltip({ children, content, side = "top", delayDuration = 300 }
           <TooltipPrimitive.Content
             side={side}
             sideOffset={6}
-            className="z-50 max-w-[220px] px-2.5 py-1.5 text-xs font-medium text-[--text-primary] bg-[--bg-elevated] border border-[--border-default] rounded-[6px] shadow-xl animate-fade-in select-none"
+            className="z-50 max-w-[min(280px,calc(100vw-1.5rem))] px-2.5 py-1.5 text-xs font-medium text-[--text-primary] bg-[--bg-elevated] border border-[--border-default] rounded-[6px] shadow-xl animate-fade-in select-none"
           >
             {content}
             <TooltipPrimitive.Arrow className="fill-[--bg-elevated]" />
