@@ -27,11 +27,16 @@ def _build_storage_uri() -> str:
     return "memory://"
 
 
+# headers_enabled=False: SlowAPI's @limiter.limit wrapper injects headers only on
+# starlette.responses.Response. FastAPI endpoints return Pydantic models — the library
+# then calls _inject_headers(kwargs.get("response"), ...) which is None → 500
+# ("parameter `response` must be an instance of starlette.responses.Response").
+# Limits still apply; 429 responses still include Retry-After via rate_limit_exceeded_handler.
 limiter = Limiter(
     key_func=get_remote_address,
     storage_uri=_build_storage_uri(),
     default_limits=["200/minute"],
-    headers_enabled=True,
+    headers_enabled=False,
 )
 
 
