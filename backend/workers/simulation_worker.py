@@ -214,13 +214,27 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
                     )
                     user = user_result.scalar_one_or_none()
                     if user and user.email:
-                        await send_simulation_complete(
+                        raw = (settings.app_domain or "futurus.dev").strip()
+                        if raw.startswith("https://"):
+                            raw = raw[8:]
+                        elif raw.startswith("http://"):
+                            raw = raw[7:]
+                        domain = raw.split("/")[0].strip() or "futurus.dev"
+                        report_url = f"https://{domain}/simulation/{sim.id}/report"
+                        sent = await send_simulation_complete(
                             to_email=user.email,
                             user_name=user.full_name or "there",
                             business_name=sim.business_name,
-                            report_url=f"https://futurus.dev/simulation/{sim.id}/report",
+                            report_url=report_url,
                             adoption_rate=report.summary_metrics.get("adoption_rate", 0),
                         )
+                        if not sent:
+                            logger.warning(
+                                "simulation_complete_email_not_sent",
+                                simulation_id=simulation_id,
+                                notify_email=user.email,
+                                hint="Configure SES or SMTP_HOST/SMTP_USER/SMTP_PASS on the backend.",
+                            )
                 except Exception as email_err:
                     logger.warning("email_send_failed", error=str(email_err))
 

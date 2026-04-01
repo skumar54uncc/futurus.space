@@ -144,6 +144,19 @@ class Settings(BaseSettings):
     aws_ses_region: str = "us-east-1"
     app_domain: str = "futurus.dev"
 
+    # Optional SMTP (e.g. Gmail app password on DigitalOcean). Used for simulation-complete email when SES fails or is unset.
+    # Same variable names as Vercel contact form: SMTP_HOST, SMTP_USER, SMTP_PASS.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = Field(
+        default="",
+        validation_alias=AliasChoices("SMTP_PASS", "SMTP_PASSWORD"),
+    )
+    smtp_from: str = ""
+    # Set true for port 465 (SMTPS). Port 587 uses STARTTLS automatically.
+    smtp_secure: bool = False
+
     # development | production — SECURITY: gates HSTS and strict startup checks
     environment: str = "development"
 

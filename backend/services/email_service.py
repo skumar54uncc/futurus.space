@@ -1,12 +1,16 @@
 """
-AWS SES email service for Futurus.
-Sends: simulation complete, welcome, share notifications.
+Transactional email for Futurus: simulation complete, welcome, share.
 
-Before this works you must:
-1. Verify your sender domain (futurus.dev) in AWS SES Console
-2. Request production access (exit sandbox) — takes 24hrs
-3. While in sandbox: you can only send to verified email addresses
+Priority:
+1. AWS SES (when AWS_ACCESS_KEY_ID is set and SES send succeeds)
+2. SMTP (e.g. Gmail + app password) when SMTP_HOST, SMTP_USER, SMTP_PASS are set on the **backend** (DigitalOcean)
+
+Vercel-only SMTP does not apply here — the worker runs on the API server.
 """
+import asyncio
+import smtplib
+from email.mime.text import MIMEText
+
 import boto3
 from botocore.exceptions import ClientError
 from core.config import settings
@@ -211,23 +215,75 @@ async def send_report_shared(
     return await _send_email(to_email, subject, html_body)
 
 
+def _smtp_configured() -> bool:
+    return bool(
+        settings.smtp_host.strip()
+        and settings.smtp_user.strip()
+        and (settings.smtp_password or "").strip()
+    )
+
+
+def _smtp_send_sync(to_email: str, subject: str, html_body: str) -> None:
+    """Send via Gmail-compatible SMTP (runs in thread pool)."""
+    envelope_from = settings.smtp_user.strip()
+    display_from = (settings.smtp_from or "").strip() or f"Futurus <{envelope_from}>"
+    reply_to = REPLY_TO if "@" in REPLY_TO else envelope_from
+
+    msg = MIMEText(html_body, "html", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = display_from
+    msg["To"] = to_email
+    msg["Reply-To"] = reply_to
+
+    host = settings.smtp_host.strip()
+    port = int(settings.smtp_port or 587)
+    password = (settings.smtp_password or "").strip()
+
+    if settings.smtp_secure or port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=30) as server:
+            server.login(envelope_from, password)
+            server.sendmail(envelope_from, [to_email], msg.as_string())
+    else:
+        with smtplib.SMTP(host, port, timeout=30) as server:
+            server.starttls()
+            server.login(envelope_from, password)
+            server.sendmail(envelope_from, [to_email], msg.as_string())
+
+
 async def _send_email(to_email: str, subject: str, html_body: str) -> bool:
     client = _get_ses()
+    if client:
+        try:
+            client.send_email(
+                Source=FROM_ADDRESS,
+                Destination={"ToAddresses": [to_email]},
+                Message={
+                    "Subject": {"Data": subject, "Charset": "UTF-8"},
+                    "Body": {"Html": {"Data": html_body, "Charset": "UTF-8"}},
+                },
+                ReplyToAddresses=[REPLY_TO],
+            )
+            logger.info("email_sent_ses", to=to_email, subject=subject)
+            return True
+        except ClientError as e:
+            logger.warning("ses_send_failed_will_try_smtp", error=str(e), to=to_email)
+
+    if _smtp_configured():
+        try:
+            await asyncio.to_thread(_smtp_send_sync, to_email, subject, html_body)
+            logger.info("email_sent_smtp", to=to_email, subject=subject)
+            return True
+        except Exception as e:
+            logger.error("smtp_send_failed", error=str(e), to=to_email)
+            return False
+
     if not client:
-        logger.warning("ses_not_configured", to=to_email, subject=subject)
-        return False
-    try:
-        client.send_email(
-            Source=FROM_ADDRESS,
-            Destination={"ToAddresses": [to_email]},
-            Message={
-                "Subject": {"Data": subject, "Charset": "UTF-8"},
-                "Body": {"Html": {"Data": html_body, "Charset": "UTF-8"}},
-            },
-            ReplyToAddresses=[REPLY_TO],
+        logger.warning(
+            "email_not_configured",
+            to=to_email,
+            subject=subject,
+            hint="Set AWS SES keys and verify domain, or set SMTP_HOST, SMTP_USER, SMTP_PASS on the backend.",
         )
-        logger.info("email_sent", to=to_email, subject=subject)
-        return True
-    except ClientError as e:
-        logger.error("ses_send_failed", error=str(e), to=to_email)
-        return False
+    else:
+        logger.error("email_send_failed_no_smtp_fallback", to=to_email, subject=subject)
+    return False

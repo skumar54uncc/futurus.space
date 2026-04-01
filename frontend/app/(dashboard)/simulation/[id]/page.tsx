@@ -164,7 +164,7 @@ export default function SimulationPage() {
       setNotifyEnabled(data.notify_on_complete);
       toast.success(
         data.notify_on_complete
-          ? "You'll get an email when this simulation completes."
+          ? "When this run finishes, we'll email your account—if the API has SES or SMTP (e.g. Gmail) configured."
           : "Email notification removed."
       );
     } catch {
