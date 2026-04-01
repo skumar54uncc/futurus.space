@@ -55,6 +55,8 @@ async def verify_clerk_token(token: str) -> dict:
             "options": {
                 "verify_aud": verify_aud,
                 "verify_exp": True,
+                "verify_iat": True,
+                "leeway": 10,
             },
         }
         if verify_aud:

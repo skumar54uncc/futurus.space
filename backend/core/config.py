@@ -40,6 +40,24 @@ def _strip_sslmode_for_asyncpg(url: str) -> str:
 class Settings(BaseSettings):
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
+    # Cap asyncio Redis pool (WebSocket pub/sub, health, idempotency). Upstash free tier: ~20 TCP connections total.
+    redis_max_connections: int = Field(
+        default=8,
+        validation_alias=AliasChoices(
+            "FUTURUS_REDIS_MAX_CONNECTIONS",
+            "REDIS_MAX_CONNECTIONS",
+        ),
+    )
+
+    # Upstash REST (HTTP) — optional LLM counters; no persistent TCP. Prefer with Upstash free tier.
+    upstash_redis_rest_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("UPSTASH_REDIS_REST_URL"),
+    )
+    upstash_redis_rest_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("UPSTASH_REDIS_REST_TOKEN"),
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -158,7 +176,20 @@ class Settings(BaseSettings):
     smtp_secure: bool = False
 
     # development | production — SECURITY: gates HSTS and strict startup checks
-    environment: str = "development"
+    environment: str = Field(
+        default="development",
+        validation_alias=AliasChoices("ENVIRONMENT", "FUTURUS_ENVIRONMENT"),
+    )
+
+    sentry_dsn: str = Field(
+        default="",
+        validation_alias=AliasChoices("SENTRY_DSN", "FUTURUS_SENTRY_DSN"),
+    )
+    # Restrict /api/admin/llm-status; falls back to enterprise tier if unset (see main.py).
+    admin_email: str = Field(
+        default="",
+        validation_alias=AliasChoices("ADMIN_EMAIL", "FUTURUS_ADMIN_EMAIL"),
+    )
 
     max_cost_per_simulation_usd: float = 15.00
     backend_url: str = "http://localhost:8000"

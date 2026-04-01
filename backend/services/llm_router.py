@@ -10,10 +10,13 @@ Never exposes raw API keys in logs — only key_0, key_1, etc.
 import json
 import random
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
 import structlog
+
+from core.redis import get_upstash_redis_optional
 
 logger = structlog.get_logger()
 
@@ -36,10 +39,75 @@ class AllProvidersExhausted(Exception):
 
 # ── Key tracking ──────────────────────────────────────────────────────────────
 
+def _redis_rpm_key(counter_ns: str, key_idx: int) -> str:
+    return f"llm:rpm:{counter_ns}:{key_idx}"
+
+
+def _redis_rpd_key(counter_ns: str, key_idx: int) -> str:
+    date = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return f"llm:rpd:{counter_ns}:{key_idx}:{date}"
+
+
+def _next_midnight_ts() -> int:
+    now = datetime.now(timezone.utc)
+    midnight = (now + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return int(midnight.timestamp())
+
+
+def _redis_incr_and_check(
+    counter_ns: str, key_idx: int, rpm_limit: int, rpd_limit: int
+) -> bool:
+    """
+    Atomically increment RPM and RPD in Upstash (HTTP). Returns False if over limit
+    (and rolls back increments). On Redis errors, fail open (True).
+    """
+    r = get_upstash_redis_optional()
+    if r is None:
+        return True
+    rpm_key = _redis_rpm_key(counter_ns, key_idx)
+    rpd_key = _redis_rpd_key(counter_ns, key_idx)
+    try:
+        pipe = r.pipeline()
+        pipe.incr(rpm_key)
+        pipe.expire(rpm_key, 60)
+        pipe.incr(rpd_key)
+        pipe.expireat(rpd_key, _next_midnight_ts())
+        results = pipe.exec()
+        rpm_count = int(results[0])
+        rpd_count = int(results[2])
+        if rpm_count > rpm_limit or (rpd_limit > 0 and rpd_count > rpd_limit):
+            pipe2 = r.pipeline()
+            pipe2.decr(rpm_key)
+            pipe2.decr(rpd_key)
+            pipe2.exec()
+            return False
+        return True
+    except Exception as e:
+        logger.warning("llm_redis_counter_failed", error=str(e))
+        return True
+
+
+def _redis_get_counts(counter_ns: str, key_idx: int) -> tuple[int, int]:
+    r = get_upstash_redis_optional()
+    if r is None:
+        return 0, 0
+    try:
+        rpm_raw = r.get(_redis_rpm_key(counter_ns, key_idx))
+        rpd_raw = r.get(_redis_rpd_key(counter_ns, key_idx))
+        rpm_c = int(rpm_raw) if rpm_raw is not None else 0
+        rpd_c = int(rpd_raw) if rpd_raw is not None else 0
+        return rpm_c, rpd_c
+    except Exception:
+        return 0, 0
+
+
 class ApiKey:
-    def __init__(self, index: int, value: str):
+    def __init__(self, index: int, value: str, counter_ns: str = "unknown"):
         self.index = index
         self.value = value
+        self.counter_ns = counter_ns
         self.requests_today: int = 0
         self.requests_this_minute: int = 0
         self._last_minute_reset: float = time.monotonic()
@@ -57,10 +125,22 @@ class ApiKey:
     def can_use(self, rpm_limit: int, rpd_limit: int) -> bool:
         if self.is_cooling():
             return False
+        if get_upstash_redis_optional() is not None:
+            rpm_c, rpd_c = _redis_get_counts(self.counter_ns, self.index)
+            if rpd_limit > 0 and rpd_c >= rpd_limit:
+                return False
+            return rpm_c < rpm_limit
         self._tick_minute()
         return self.requests_this_minute < rpm_limit and self.requests_today < rpd_limit
 
-    def record(self) -> None:
+    def record(self, rpm_limit: int, rpd_limit: int) -> None:
+        if get_upstash_redis_optional() is not None:
+            ok = _redis_incr_and_check(
+                self.counter_ns, self.index, rpm_limit, rpd_limit
+            )
+            if not ok:
+                self.cool_down(60.0)
+            return
         self._tick_minute()
         self.requests_this_minute += 1
         self.requests_today += 1
@@ -143,22 +223,26 @@ def _build_chains() -> None:
     if not groq_values:
         logger.warning("no_groq_keys_configured")
 
-    # Each provider gets independent ApiKey instances (separate counters)
-    def groq_keys() -> list[ApiKey]:
-        return [ApiKey(i, v) for i, v in enumerate(groq_values)]
+    # Separate rows per Groq chain so RPM/RPD limits can differ (Redis namespace matches provider).
+    groq_70b_keys = [ApiKey(i, v, "groq_70b") for i, v in enumerate(groq_values)]
+    groq_8b_keys = [ApiKey(i, v, "groq_8b") for i, v in enumerate(groq_values)]
 
     gemini_keys = (
-        [ApiKey(0, settings.gemini_api_key)] if settings.gemini_api_key else []
+        [ApiKey(0, settings.gemini_api_key, "gemini")]
+        if settings.gemini_api_key
+        else []
     )
     openrouter_keys = (
-        [ApiKey(0, settings.openrouter_api_key)] if settings.openrouter_api_key else []
+        [ApiKey(0, settings.openrouter_api_key, "openrouter")]
+        if settings.openrouter_api_key
+        else []
     )
 
     groq_70b = Provider(
         name="groq_70b",
         base_url="https://api.groq.com/openai/v1",
         model="llama-3.3-70b-versatile",
-        api_keys=groq_keys(),
+        api_keys=groq_70b_keys,
         rpm_limit=30,
         rpd_limit=1000,
     )
@@ -166,7 +250,7 @@ def _build_chains() -> None:
         name="groq_8b",
         base_url="https://api.groq.com/openai/v1",
         model="llama-3.1-8b-instant",
-        api_keys=groq_keys(),
+        api_keys=groq_8b_keys,
         rpm_limit=30,
         rpd_limit=14400,
     )
@@ -200,7 +284,7 @@ def _build_chains() -> None:
                 name="digitalocean_tier1",
                 base_url=do_base,
                 model=m1,
-                api_keys=[ApiKey(0, do_key)],
+                api_keys=[ApiKey(0, do_key, "digitalocean_tier1")],
                 rpm_limit=120,
                 rpd_limit=100_000,
             )
@@ -210,7 +294,7 @@ def _build_chains() -> None:
                 name="digitalocean_tier2",
                 base_url=do_base,
                 model=m2,
-                api_keys=[ApiKey(0, do_key)],
+                api_keys=[ApiKey(0, do_key, "digitalocean_tier2")],
                 rpm_limit=120,
                 rpd_limit=100_000,
             )
@@ -309,7 +393,7 @@ async def _call_provider(
     if key is None:
         raise AllProvidersExhausted(f"{provider.name}: no available keys")
 
-    key.record()
+    key.record(provider.rpm_limit, provider.rpd_limit)
 
     # DigitalOcean serverless inference: prefer max_completion_tokens; max_tokens is deprecated there.
     # Groq / OpenRouter / Gemini OpenAI-compat: use max_tokens.

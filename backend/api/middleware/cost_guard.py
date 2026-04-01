@@ -31,6 +31,4 @@ class CostGuardMiddleware(BaseHTTPMiddleware):
                 duration_ms=round(duration_ms, 1),
             )
 
-        response.headers["X-LLM-Cost-USD"] = str(cost)
-        response.headers["X-Duration-MS"] = str(round(duration_ms, 1))
         return response

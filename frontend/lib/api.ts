@@ -61,6 +61,12 @@ api.interceptors.request.use(async (config) => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    const method = (config.method || "").toLowerCase();
+    const path = typeof config.url === "string" ? config.url.split("?")[0] : "";
+    if (method === "post" && /\/api\/simulations\/?$/.test(path)) {
+      const windowKey = Math.floor(Date.now() / 10000).toString(36);
+      config.headers["X-Idempotency-Key"] = windowKey;
+    }
   }
   return config;
 });

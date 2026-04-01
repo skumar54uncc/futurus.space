@@ -10,37 +10,50 @@ from fastapi.responses import JSONResponse
 from core.config import settings
 
 
-def _resolve_rate_limit_storage_uri() -> str:
+def _build_storage_uri() -> str:
+    """
+    SlowAPI storage: Redis when redis_url is set (shared across DO instances).
+    rate_limit_storage_uri overrides (memory:// for single-instance dev).
+    """
     raw = (settings.rate_limit_storage_uri or "").strip().lower()
     if raw in ("memory", "memory://"):
         return "memory://"
-    if raw:
-        return settings.rate_limit_storage_uri.strip()
-    return settings.redis_url
+    stripped = (settings.rate_limit_storage_uri or "").strip()
+    if stripped:
+        return stripped
+    ru = (settings.redis_url or "").strip()
+    if ru.startswith(("redis://", "rediss://")):
+        return ru
+    return "memory://"
 
 
-# SECURITY: default Redis for multi-instance; optional memory:// avoids sync Redis in the event loop (single worker).
 limiter = Limiter(
     key_func=get_remote_address,
-    storage_uri=_resolve_rate_limit_storage_uri(),
+    storage_uri=_build_storage_uri(),
     default_limits=["200/minute"],
+    headers_enabled=True,
 )
 
 
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    # SECURITY: Generic client message; do not leak internal limit config
+    retry_after = getattr(exc, "retry_after", None)
+    headers: dict[str, str] = {}
+    if retry_after is not None:
+        headers["Retry-After"] = str(retry_after)
     return JSONResponse(
         status_code=429,
         content={
-            "detail": "Too many requests. Please slow down.",
-            "retry_after": getattr(exc, "retry_after", None),
+            "error": "rate_limit_exceeded",
+            "message": "Too many requests. Please slow down.",
+            "retry_after": str(retry_after) if retry_after is not None else None,
         },
+        headers=headers,
     )
 
 
 # SECURITY: Per-route cost tiers (LLM / PDF heavy routes stricter)
 LIMITS = {
-    "simulation_create": "10/minute",
+    "simulation_create": "2/day",
     "analyze_idea": "20/minute",
     "refine_idea": "20/minute",
     "generate_personas": "15/minute",

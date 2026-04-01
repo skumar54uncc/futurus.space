@@ -9,6 +9,7 @@ from jinja2 import Template
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from models.simulation import Report, Simulation
 import structlog
 
@@ -392,6 +393,15 @@ async def generate_pdf(
     sim = result.scalar_one_or_none()
     html = _build_html(report, simulation_id, sim)
 
+    from services.storage_service import _get_s3_client
+
+    if settings.environment == "production" and not _get_s3_client():
+        logger.warning(
+            "report_export_no_s3_ephemeral_disk",
+            simulation_id=str(simulation_id),
+            hint="PDFs on local disk are wiped on App Platform redeploy; add AWS S3 when you ship downloads.",
+        )
+
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     pdf_filename = f"report_{simulation_id}.pdf"
 
@@ -420,8 +430,22 @@ async def generate_pdf(
                 await db.commit()
                 logger.info("pdf_uploaded", simulation_id=str(simulation_id), url=cdn_url, engine=engine)
                 return cdn_url, "pdf"
+            if settings.environment == "production" and _get_s3_client():
+                logger.error(
+                    "pdf_s3_upload_required_failed",
+                    simulation_id=str(simulation_id),
+                )
+                raise RuntimeError(
+                    "PDF upload to object storage failed in production; refusing local disk fallback."
+                )
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.warning("pdf_s3_upload_skipped", error=str(e))
+            if settings.environment == "production" and _get_s3_client():
+                raise RuntimeError(
+                    "PDF export requires S3 in production; upload error."
+                ) from e
 
         pdf_path = REPORTS_DIR / pdf_filename
         with open(pdf_path, "wb") as f:
@@ -434,6 +458,29 @@ async def generate_pdf(
 
     logger.warning("pdf_engines_failed_using_html_fallback", simulation_id=str(simulation_id))
     html_filename = f"report_{simulation_id}.html"
+    try:
+        from services.storage_service import upload_report_html
+
+        html_url_remote = await upload_report_html(
+            html_content=html,
+            simulation_id=str(simulation_id),
+            report_type="standard",
+        )
+        if html_url_remote:
+            report.pdf_url = html_url_remote
+            await db.commit()
+            return html_url_remote, "html"
+        if settings.environment == "production" and _get_s3_client():
+            raise RuntimeError(
+                "HTML report upload to object storage failed in production; refusing local disk fallback."
+            )
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.warning("html_s3_upload_skipped", error=str(e))
+        if settings.environment == "production" and _get_s3_client():
+            raise RuntimeError("HTML export requires S3 in production.") from e
+
     html_path = REPORTS_DIR / html_filename
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
@@ -441,6 +488,57 @@ async def generate_pdf(
     report.pdf_url = html_url
     await db.commit()
     return html_url, "html"
+
+
+async def _save_output(
+    content: bytes,
+    simulation_id: uuid.UUID,
+    db: AsyncSession,
+    suffix: str,
+    content_type: str,
+) -> tuple[str, str]:
+    """
+    Ephemeral disk on App Platform: prefer S3 when settings.aws_s3_bucket + credentials work;
+    local static/reports only for development without object storage.
+    """
+    filename = f"report_{simulation_id}{suffix}"
+    fmt: Literal["pdf", "html"] = "pdf" if suffix == ".pdf" else "html"
+
+    if settings.aws_s3_bucket:
+        from services.storage_service import upload_report_bytes
+
+        try:
+            s3_url = await upload_report_bytes(
+                data=content,
+                filename=filename,
+                content_type=content_type,
+            )
+            if not s3_url:
+                raise RuntimeError("S3 upload returned empty URL")
+            result = await db.execute(
+                select(Report).where(Report.simulation_id == simulation_id)
+            )
+            report = result.scalar_one_or_none()
+            if report:
+                report.pdf_url = s3_url
+                await db.commit()
+            return s3_url, fmt
+        except Exception as e:
+            logger.error(
+                "s3_upload_failed",
+                simulation_id=str(simulation_id),
+                error=str(e),
+            )
+            raise
+
+    logger.warning(
+        "using_local_disk_storage",
+        hint="Set AWS credentials and bucket for production.",
+    )
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    path = REPORTS_DIR / filename
+    path.write_bytes(content)
+    return f"/static/reports/{filename}", fmt
 
 
 def is_pdf_url(url: str | None) -> bool:

@@ -25,3 +25,5 @@ pytest==8.3.3
 pytest-asyncio==0.24.0
 slowapi==0.1.9
 limits==3.13.0
+upstash-redis==1.1.0
+sentry-sdk[fastapi]==2.8.0

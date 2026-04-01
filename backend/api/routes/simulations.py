@@ -95,6 +95,33 @@ async def create_simulation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    idempotency_key = request.headers.get("X-Idempotency-Key", "").strip()
+    if idempotency_key:
+        try:
+            from core.redis import get_redis
+
+            r = await get_redis()
+            cache_key = f"idem:{current_user.id}:{idempotency_key}"
+            cached_sim_id = await r.get(cache_key)
+            if cached_sim_id:
+                sim_uuid = uuid.UUID(
+                    cached_sim_id
+                    if isinstance(cached_sim_id, str)
+                    else str(cached_sim_id)
+                )
+                result = await db.execute(
+                    select(Simulation).where(Simulation.id == sim_uuid)
+                )
+                existing = result.scalar_one_or_none()
+                if existing:
+                    logger.info(
+                        "idempotent_simulation_returned",
+                        sim_id=str(sim_uuid),
+                    )
+                    return SimulationResponse.model_validate(existing)
+        except Exception as e:
+            logger.warning("idempotency_check_failed", error=str(e))
+
     await check_and_deduct_credit(current_user, db)
     limits = settings.simulation_limits
     effective_agents = min(payload.agent_count, limits["agents"])
@@ -150,6 +177,19 @@ async def create_simulation(
                 args=(str(sim.id),),
                 daemon=True,
             ).start()
+
+    if idempotency_key:
+        try:
+            from core.redis import get_redis
+
+            r = await get_redis()
+            await r.set(
+                f"idem:{current_user.id}:{idempotency_key}",
+                str(sim.id),
+                ex=86400,
+            )
+        except Exception:
+            pass
 
     return SimulationResponse.model_validate(sim)
 

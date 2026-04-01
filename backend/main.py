@@ -3,9 +3,8 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import redis.asyncio as aioredis
 import structlog
-from fastapi import Depends, FastAPI, Request, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,18 +14,67 @@ from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from core.config import settings
+
+_shared_processors = [
+    structlog.contextvars.merge_contextvars,
+    structlog.processors.TimeStamper(fmt="iso"),
+    structlog.processors.add_log_level,
+]
+if settings.environment == "development":
+    structlog.configure(
+        processors=_shared_processors + [structlog.dev.ConsoleRenderer(colors=True)],
+        wrapper_class=structlog.make_filtering_bound_logger(20),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+    )
+else:
+    structlog.configure(
+        processors=_shared_processors + [structlog.processors.JSONRenderer()],
+        wrapper_class=structlog.make_filtering_bound_logger(20),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+    )
+
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+    def _scrub_pii(event, hint):
+        if "request" in event:
+            hdrs = event["request"].get("headers", {})
+            if isinstance(hdrs, dict):
+                for key in list(hdrs.keys()):
+                    if key.lower() in ("authorization", "cookie", "x-api-key"):
+                        hdrs[key] = "[Filtered]"
+        return event
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+        ],
+        traces_sample_rate=0.05,
+        send_default_pii=False,
+        before_send=_scrub_pii,
+    )
+
+logger = structlog.get_logger()
+
 from api.middleware.auth import get_current_user
 from api.middleware.cost_guard import CostGuardMiddleware
 from api.middleware.rate_limiter import limiter, rate_limit_exceeded_handler
+from api.middleware.request_id import RequestIDMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routes import auth, chat, reports, simulations
-from core.config import settings
 from core.database import AsyncSessionLocal, Base, engine
+from core.redis import clear_upstash_client_cache, close_redis, get_redis
 from core.security import verify_clerk_token
 from models.simulation import Simulation
 from models.user import User
-
-logger = structlog.get_logger()
 
 
 async def _recover_stale_queued_simulations() -> None:
@@ -69,18 +117,32 @@ async def _recover_stale_queued_simulations() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Futurus API")
+    logger.info(
+        "futurus_starting",
+        environment=settings.environment,
+        simulation_worker_inline=settings.simulation_worker_inline,
+    )
     if not settings.simulation_worker_inline:
         logger.warning(
             "simulation_worker_inline_disabled",
             hint="New simulations are sent to Celery only. Without a worker process they stay queued. "
             "Run: celery -A workers.celery_app worker -l info — or set FUTURUS_SIMULATION_WORKER_INLINE=true in .env",
         )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if settings.environment == "development":
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("dev_schema_synced")
+    else:
+        logger.info("production_schema_managed_by_alembic")
+
     await _recover_stale_queued_simulations()
     yield
+
+    logger.info("futurus_shutting_down")
     await engine.dispose()
+    await close_redis()
+    clear_upstash_client_cache()
+    logger.info("futurus_shutdown_complete")
 
 
 app = FastAPI(
@@ -98,6 +160,7 @@ app.add_middleware(SlowAPIMiddleware)
 
 # SECURITY: Browser-oriented headers on API responses
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 # CORS: futurus.dev + CORS_EXTRA_ORIGINS; regex always allows local dev and any *.vercel.app preview.
 # (Previously Vercel previews only matched when ENVIRONMENT=production, so a missing env on DO blocked all previews.)
@@ -198,7 +261,7 @@ async def simulation_websocket(websocket: WebSocket, simulation_id: str):
             return
 
     await websocket.accept()
-    r = aioredis.from_url(settings.redis_url)
+    r = await get_redis()
     pubsub = r.pubsub()
     await pubsub.subscribe(f"sim:{simulation_id}")
     try:
@@ -229,7 +292,8 @@ async def simulation_websocket(websocket: WebSocket, simulation_id: str):
             pass  # Client already disconnected — acceptable here
     finally:
         await pubsub.unsubscribe(f"sim:{simulation_id}")
-        await r.aclose()
+        await pubsub.aclose()
+        # Connection returned to pool — do not close the shared client.
 
 
 app.include_router(auth.router)
@@ -246,27 +310,33 @@ app.mount("/static/reports", StaticFiles(directory=str(static_dir)), name="repor
 @app.get("/health")
 @limiter.exempt
 async def health(request: Request):
-    checks = {"api": "ok"}
+    checks: dict[str, str] = {"api": "ok"}
 
-    # Check DB
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(select(1))
         checks["database"] = "ok"
-    except Exception as e:
-        checks["database"] = f"error: {str(e)[:50]}"
+    except Exception:
+        checks["database"] = "error"
+        logger.error("health_db_failed", exc_info=True)
 
-    # Check Redis
     try:
-        r = aioredis.from_url(settings.redis_url)
+        r = await get_redis()
         await r.ping()
-        await r.aclose()
         checks["redis"] = "ok"
-    except Exception as e:
-        checks["redis"] = f"error: {str(e)[:50]}"
+    except Exception:
+        checks["redis"] = "error"
+        logger.error("health_redis_failed", exc_info=True)
 
-    status = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
-    return {"status": status, "service": "futurus-api", "checks": checks}
+    all_ok = all(v == "ok" for v in checks.values())
+    return JSONResponse(
+        content={
+            "status": "ok" if all_ok else "degraded",
+            "service": "futurus-api",
+            "checks": checks,
+        },
+        status_code=200 if all_ok else 503,
+    )
 
 
 @app.get("/api/admin/llm-status")
@@ -275,12 +345,25 @@ async def llm_status(
     current_user: User = Depends(get_current_user),
 ):
     """
-    SECURITY: Returns current LLM provider/key rotation state.
-    Requires valid Clerk session token AND admin/enterprise access.
+    SECURITY: LLM provider status — admin email (production) or enterprise tier when unset.
     """
-    if current_user.plan_tier != "enterprise":
-        from fastapi import HTTPException
+    admin = (settings.admin_email or "").strip().lower()
+    if admin:
+        if (current_user.email or "").strip().lower() != admin:
+            raise HTTPException(status_code=403, detail="Admin access required")
+    elif current_user.plan_tier != "enterprise":
         raise HTTPException(status_code=403, detail="Admin access required")
 
     from services.llm_router import get_providers
-    return {"providers": get_providers()}
+
+    rows = get_providers()
+    return {
+        "providers": [
+            {
+                "name": x["name"],
+                "available": x["available"],
+                "keys_count": len(x.get("keys", [])),
+            }
+            for x in rows
+        ],
+    }

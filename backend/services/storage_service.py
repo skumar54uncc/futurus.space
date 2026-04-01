@@ -125,6 +125,66 @@ async def upload_report_pdf(
         return ""
 
 
+async def upload_report_bytes(
+    data: bytes,
+    filename: str,
+    content_type: str = "application/pdf",
+) -> str:
+    """Upload raw bytes under reports/{filename}. Returns CDN/S3 URL or "" if S3 unavailable."""
+    client = _get_s3_client()
+    if not client:
+        logger.warning("s3_not_configured")
+        return ""
+    key = f"reports/{filename}"
+    try:
+        client.put_object(
+            Bucket=BUCKET,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            CacheControl="max-age=86400",
+        )
+        cdn_url = f"{CDN_BASE}/{key}" if CDN_BASE else f"https://{BUCKET}.s3.amazonaws.com/{key}"
+        logger.info("report_bytes_uploaded", key=key, url=cdn_url)
+        return cdn_url
+    except ClientError as e:
+        logger.warning("s3_bytes_upload_failed", error=str(e), key=key)
+        return ""
+
+
+async def upload_report_html(
+    html_content: str,
+    simulation_id: str,
+    report_type: str = "standard",
+) -> str:
+    """Upload HTML fallback report to S3; returns CDN or S3 URL, or "" if S3 unavailable."""
+    client = _get_s3_client()
+    if not client:
+        logger.warning("s3_not_configured")
+        return ""
+
+    body = html_content.encode("utf-8")
+    key = f"reports/{simulation_id}/{report_type}_{uuid.uuid4().hex[:8]}.html"
+    try:
+        client.put_object(
+            Bucket=BUCKET,
+            Key=key,
+            Body=body,
+            ContentType="text/html; charset=utf-8",
+            CacheControl="max-age=86400",
+            Metadata={
+                "simulation-id": simulation_id,
+                "report-type": report_type,
+            },
+        )
+        cdn_url = f"{CDN_BASE}/{key}" if CDN_BASE else f"https://{BUCKET}.s3.amazonaws.com/{key}"
+        logger.info("report_html_uploaded", key=key, url=cdn_url)
+        return cdn_url
+    except ClientError as e:
+        logger.warning("s3_html_upload_failed", error=str(e), key=key)
+        return ""
+
+
 async def presign_private_report_url(
     url: str | None,
     *,

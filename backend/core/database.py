@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import NullPool, QueuePool
+from sqlalchemy.pool import NullPool
 from core.config import settings
 
 
@@ -32,11 +32,11 @@ if _pgbouncer_style_url(settings.database_url):
         pool_pre_ping=True,
     )
 else:
+    # Default pool for create_async_engine is async-compatible (do not use sync QueuePool).
     engine = create_async_engine(
         settings.database_url,
         echo=settings.environment == "development",
         connect_args=_ASYNCPG_CONNECT_ARGS,
-        poolclass=QueuePool,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
