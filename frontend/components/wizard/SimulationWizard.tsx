@@ -9,8 +9,8 @@ import { FreeTierLimitsNotice } from "@/components/landing/FreeTierLimitsNotice"
 import {
   buildSimulationCreatePayload,
   competitorDisplayName,
-  formatSimulationLaunchError,
   normalizeGeneratedFieldsFromApi,
+  parseSimulationLaunchError,
   validateLaunchFields,
 } from "@/lib/wizardPayload";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import toast from "react-hot-toast";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Sparkles, ArrowRight, Loader2, Rocket, Pencil, Check } from "lucide-react";
 
 function PhaseIdea() {
@@ -297,6 +298,7 @@ function toastDetailFromApiError(err: unknown, maxLen = 220): string | null {
 export function SimulationWizard() {
   const store = useWizardStore();
   const [loading, setLoading] = useState(false);
+  const [quotaDialog, setQuotaDialog] = useState<{ title: string; body: string } | null>(null);
   const router = useRouter();
   const requestLock = useRef(false);
 
@@ -379,7 +381,12 @@ export function SimulationWizard() {
       // Reset after navigation starts so the phase change doesn't flash the idea screen
       setTimeout(() => store.reset(), 500);
     } catch (err: unknown) {
-      toast.error(formatSimulationLaunchError(err), { id: TOAST_ID_LAUNCH });
+      const parsed = parseSimulationLaunchError(err);
+      if (parsed.kind === "daily_limit") {
+        setQuotaDialog({ title: parsed.title, body: parsed.body });
+      } else {
+        toast.error(parsed.message, { id: TOAST_ID_LAUNCH });
+      }
     } finally {
       setLoading(false);
       requestLock.current = false;
@@ -473,6 +480,27 @@ export function SimulationWizard() {
           </Button>
         )}
       </div>
+
+      <AlertDialog.Root open={quotaDialog !== null} onOpenChange={(open) => !open && setQuotaDialog(null)}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/60 z-[500] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <AlertDialog.Content className="fixed z-[500] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] mx-4 bg-background border border-border rounded-[16px] p-6 shadow-2xl">
+            <AlertDialog.Title className="text-lg font-semibold text-foreground pr-8">
+              {quotaDialog?.title ?? ""}
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-3 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+              {quotaDialog?.body ?? ""}
+            </AlertDialog.Description>
+            <div className="mt-6 flex justify-end">
+              <AlertDialog.Cancel asChild>
+                <Button type="button" className="bg-primary text-primary-foreground hover:bg-primary/90">
+                  OK
+                </Button>
+              </AlertDialog.Cancel>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </div>
   );
 }

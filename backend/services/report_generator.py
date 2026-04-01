@@ -10,9 +10,14 @@ import secrets
 import statistics
 import uuid
 from collections import Counter
+
+import structlog
 from models.simulation import Simulation, SimulationEvent, Report
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.llm_router import call_llm
+from services.llm_text_json import coerce_llm_json_text
+
+logger = structlog.get_logger()
 
 
 async def generate_report(
@@ -263,12 +268,20 @@ IMPORTANT:
         content = await call_llm(
             messages=[{"role": "user", "content": prompt}],
             agent_tier=1,
-            max_tokens=2500,
+            max_tokens=4000,
             temperature=0.2,
             json_mode=True,
+            read_timeout=75.0,
+            max_provider_attempts=4,
         )
-        return json.loads(content)
-    except Exception:
+        coerced = coerce_llm_json_text(content)
+        return json.loads(coerced)
+    except Exception as exc:
+        logger.exception(
+            "report_agent_qualitative_failed",
+            simulation_id=str(simulation.id),
+            error=str(exc),
+        )
         return {
             "failure_timeline": [],
             "risk_matrix": [{"risk": "Analysis unavailable", "probability": "medium", "impact": "medium", "mitigation": "Retry report generation"}],

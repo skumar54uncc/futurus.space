@@ -75,6 +75,7 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
     from services.seed_builder import build_seed
     from services.persona_generator import generate_personas
     from services.report_generator import generate_report
+    from services.simulation_errors import user_facing_simulation_error
     from simulation_engine.mirofish_adapter import MiroFishAdapter
     from simulation_engine.cost_governor import CostGovernor
     from schemas.simulation import SimulationCreateRequest
@@ -233,7 +234,7 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
                 logger.info("simulation_gone_after_error", simulation_id=simulation_id)
                 return
             s.status = SimulationStatus.FAILED
-            s.error_message = str(e)
+            s.error_message = user_facing_simulation_error(e)
             await db.commit()
             # SECURITY: Generic message on pub/sub; full error stays in DB only
             _emit_progress(simulation_id, "Simulation encountered an error.", -1)

@@ -32,7 +32,9 @@ function SegmentBar({ row }: { row: PersonaResult }) {
         />
       </div>
       <div className="flex justify-between text-xs mt-1">
-        <span className="text-[#f87171] font-medium">{row.churn_rate.toFixed(1)}% churned</span>
+        <span className="text-[#f87171] font-medium">
+          {row.churn_rate.toFixed(1)}% of adopters churned
+        </span>
         <span className="text-[#818cf8] font-medium tabular-nums">{row.referrals_generated} referrals</span>
       </div>
     </div>
@@ -43,7 +45,15 @@ export function PersonaBreakdown({ data }: Props) {
   return (
     <div className="border border-[--border-subtle] rounded-xl p-6 bg-[--bg-surface]/50">
       <h2 className="text-xl font-semibold mb-1 text-[--text-primary]">Customer segment analysis</h2>
-      <p className="text-sm text-[--text-tertiary] mb-6">How each type of customer interacted with your product</p>
+      <p className="text-sm text-[--text-tertiary] mb-2">
+        How each type of customer interacted with your product
+      </p>
+      <p className="text-xs text-[--text-tertiary]/90 mb-6 leading-relaxed">
+        <span className="text-[--text-secondary]">Adopted</span> = share of agents in that segment who adopted.
+        <span className="mx-1 text-[--border-subtle]">·</span>
+        <span className="text-[--text-secondary]">Churn</span> = share of those adopters who later churned (not the whole
+        segment), so both bars can look high without being contradictory.
+      </p>
       <div>
         {data.map((row) => (
           <SegmentBar key={row.segment} row={row} />

@@ -141,25 +141,4 @@ export function validateLaunchFields(fields: GeneratedFields): string | null {
   return null;
 }
 
-export function formatSimulationLaunchError(err: unknown): string {
-  const e = err as {
-    response?: { status?: number; data?: { detail?: unknown } };
-    message?: string;
-  };
-  const d = e?.response?.data?.detail;
-  if (typeof d === "string") {
-    if (/not authenticated/i.test(d)) {
-      return "Not signed in or session expired. Refresh the page or sign in again.";
-    }
-    return d;
-  }
-  if (Array.isArray(d)) {
-    return d.map((x: { msg?: string }) => (typeof x?.msg === "string" ? x.msg : JSON.stringify(x))).join(" ");
-  }
-  if (d != null && typeof d === "object") return JSON.stringify(d);
-  const st = e?.response?.status;
-  if (st) {
-    return `Request failed (${st}). Is the backend running at ${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}?`;
-  }
-  return e?.message || "Network error.";
-}
+export { formatSimulationLaunchError, parseSimulationLaunchError } from "./apiErrors";

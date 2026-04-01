@@ -29,19 +29,26 @@ async def _report_response_presigned(report: Report, *, ttl: int) -> ReportRespo
     async def _sign(url: str | None) -> str | None:
         if not url:
             return url
+        ru = url.strip()
         try:
             signed = await presign_private_report_url(url, expiry_seconds=ttl)
         except RuntimeError as e:
-            raise HTTPException(status_code=500, detail="Could not sign download URL. Check AWS credentials.") from e
+            logger.warning(
+                "report_presign_failed_omitting_url",
+                url_preview=ru[:120],
+                error=str(e),
+            )
+            return None
 
         if signed:
             return signed
 
-        # If presigning didn't return a signed URL, only allow local/static URLs to be returned
-        ru = url.strip()
         if ru.startswith("/") or ru.startswith("http://localhost"):
             return url
-        raise HTTPException(status_code=500, detail="Could not sign download URL. Check AWS credentials.")
+
+        # Stale S3/CloudFront URL we cannot presign (no keys, wrong shape) — omit so the page still loads
+        logger.warning("report_url_not_presignable_omitting", url_preview=ru[:120])
+        return None
 
     signed_pdf = await _sign(base.pdf_url)
     signed_investor = await _sign(base.investor_pdf_url)
@@ -116,28 +123,29 @@ async def export_pdf(
                 fmt: str = "pdf" if path_low.endswith(".pdf") else "html"
                 return {"pdf_url": signed, "format": fmt}
 
-            # None = not S3 / no key — only safe to return relative or localhost URLs as-is
             ru = report.pdf_url.strip()
             if ru.startswith("/") or ru.startswith("http://localhost"):
                 raw_low = ru.lower().split("?")[0]
                 fmt = "pdf" if raw_low.endswith(".pdf") else "html"
                 return {"pdf_url": report.pdf_url, "format": fmt}
 
-            # If we could not sign and it's not a local URL, fail loudly so frontend doesn't receive unsigned S3 URL
-            raise HTTPException(
-                status_code=500,
-                detail="Could not sign download URL. Check AWS credentials.",
+            # Stored URL points at private object storage but we cannot presign — regenerate to /static or fresh upload
+            logger.warning(
+                "export_presign_none_clearing_stale_url",
+                simulation_id=str(simulation_id),
+                url_preview=ru[:120],
             )
+            report.pdf_url = None
+            await db.commit()
         except RuntimeError as e:
-            logger.exception(
-                "presign_failed_will_regenerate",
+            logger.warning(
+                "export_presign_runtime_clearing_stale_url",
                 simulation_id=str(simulation_id),
                 error=str(e),
+                url_preview=(report.pdf_url or "")[:120],
             )
-            raise HTTPException(
-                status_code=500,
-                detail="Could not sign download URL. Check AWS credentials.",
-            ) from e
+            report.pdf_url = None
+            await db.commit()
 
     if report.pdf_url and not is_pdf_url(report.pdf_url):
         report.pdf_url = None

@@ -39,6 +39,8 @@ export default function SimulationPage() {
   const [revoking, setRevoking] = useState(false);
   const [notifyLoading, setNotifyLoading] = useState(false);
   const [notifyEnabled, setNotifyEnabled] = useState<boolean | null>(null);
+  const [failedDialogOpen, setFailedDialogOpen] = useState(false);
+  const failedDialogDismissed = useRef(false);
   const redirected = useRef(false);
 
   const { simulation, loading, error, refresh } = useSimulation(simulationId, { pollMs: 2000 });
@@ -61,7 +63,7 @@ export default function SimulationPage() {
           }
         }
         if (msg.progress === -1) {
-          setStatusMessage("Simulation failed. Please try again.");
+          setStatusMessage("This run stopped because of an error. See the message below or open the details dialog.");
         }
       }
       if (msg.type === "turn") {
@@ -107,6 +109,12 @@ export default function SimulationPage() {
       setNotifyEnabled(simulation.notify_on_complete ?? false);
     }
   }, [simulation, notifyEnabled]);
+
+  useEffect(() => {
+    if (simulation?.status === "failed" && !failedDialogDismissed.current) {
+      setFailedDialogOpen(true);
+    }
+  }, [simulation?.status]);
 
   useEffect(() => {
     if (!simulation) return;
@@ -287,6 +295,40 @@ export default function SimulationPage() {
 
         <SimulationActivityLog events={events} engineTurn={currentTurn || 0} />
       </div>
+
+      <AlertDialog.Root
+        open={failedDialogOpen}
+        onOpenChange={(open) => {
+          setFailedDialogOpen(open);
+          if (!open) failedDialogDismissed.current = true;
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/60 z-[500] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <AlertDialog.Content className="fixed z-[500] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] mx-4 bg-[--bg-elevated] border border-[--border-default] rounded-[16px] p-6 shadow-2xl">
+            <AlertDialog.Title className="text-base font-semibold text-[--text-primary] mb-2">
+              Simulation couldn&apos;t finish
+            </AlertDialog.Title>
+            <AlertDialog.Description className="text-sm text-[--text-secondary] leading-relaxed whitespace-pre-wrap">
+              {simulation?.error_message?.trim() ||
+                "Something went wrong while running this simulation. You can start a new one from the dashboard when you’re ready."}
+            </AlertDialog.Description>
+            <div className="flex flex-wrap justify-end gap-3 mt-6">
+              <AlertDialog.Cancel asChild>
+                <Button variant="secondary" size="sm" type="button">
+                  Close
+                </Button>
+              </AlertDialog.Cancel>
+              <Button variant="primary" size="sm" type="button" asChild>
+                <Link href="/dashboard">Back to dashboard</Link>
+              </Button>
+              <Button variant="outline" size="sm" type="button" asChild>
+                <Link href="/new">New simulation</Link>
+              </Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
 
       <AlertDialog.Root
         open={revokeOpen}

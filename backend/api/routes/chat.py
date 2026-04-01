@@ -84,7 +84,8 @@ Failure Points: {json.dumps(report.failure_timeline)}
 - If you reference statistics or market data, mention the source or note it's a general industry estimate
 - Be honest about what the simulation can and cannot tell us
 - Give actionable, specific advice — not generic business platitudes
-- Keep responses conversational and easy to understand, no jargon
+- Keep responses conversational and easy to understand; avoid jargon and walls of symbols
+- You may use Markdown for structure (short headings, **bold** for emphasis, bullet lists). Keep sections brief and scannable
 - You can discuss: marketing strategy, pricing, location, competition, customer behavior, growth, risks, hiring, funding, operations, or anything else"""
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -95,8 +96,15 @@ Failure Points: {json.dumps(report.failure_timeline)}
     response = await client.chat.completions.create(
         model=settings.llm_model_tier1,
         messages=messages,
-        max_tokens=800,
+        max_tokens=1500,
         temperature=0.4,
     )
 
-    return ChatResponse(response=response.choices[0].message.content)
+    msg = response.choices[0].message
+    text = getattr(msg, "content", None)
+    if isinstance(text, str) and text.strip():
+        return ChatResponse(response=text.strip())
+    raise HTTPException(
+        status_code=502,
+        detail="The AI returned an empty reply. Try again in a few seconds.",
+    )

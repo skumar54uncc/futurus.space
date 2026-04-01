@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,56 @@ const SUGGESTED_QUESTIONS = [
   "What's my biggest risk?",
   "How do I improve the viral coefficient?",
 ];
+
+/** Renders model output as readable text (bold, headings, lists) instead of raw ** and ###. */
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <div className="report-chat-markdown text-[13px] leading-relaxed text-slate-100/95 [&>*:first-child]:mt-0">
+      <ReactMarkdown
+        components={{
+          h1: ({ children }) => (
+            <h4 className="mt-3 mb-1.5 text-sm font-bold tracking-tight text-white first:mt-0">{children}</h4>
+          ),
+          h2: ({ children }) => (
+            <h4 className="mt-3 mb-1.5 text-sm font-bold tracking-tight text-white first:mt-0">{children}</h4>
+          ),
+          h3: ({ children }) => (
+            <h4 className="mt-3 mb-1 text-sm font-semibold text-indigo-100 first:mt-0">{children}</h4>
+          ),
+          p: ({ children }) => <p className="mb-2.5 last:mb-0">{children}</p>,
+          ul: ({ children }) => (
+            <ul className="mb-2.5 list-disc space-y-1.5 pl-4 last:mb-0 marker:text-indigo-300/80">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="mb-2.5 list-decimal space-y-1.5 pl-4 last:mb-0 marker:text-indigo-300/80">{children}</ol>
+          ),
+          li: ({ children }) => <li className="pl-0.5">{children}</li>,
+          strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+          em: ({ children }) => <em className="italic text-slate-200">{children}</em>,
+          hr: () => <hr className="my-3 border-0 border-t border-white/15" />,
+          blockquote: ({ children }) => (
+            <blockquote className="my-2 border-l-2 border-indigo-400/50 pl-3 text-slate-300">{children}</blockquote>
+          ),
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              className="font-medium text-indigo-300 underline decoration-indigo-400/50 underline-offset-2 hover:text-indigo-200"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {children}
+            </a>
+          ),
+          code: ({ children }) => (
+            <code className="rounded bg-black/25 px-1 py-0.5 font-mono text-[12px] text-indigo-100">{children}</code>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 export function ReportChat({ simulationId }: { simulationId: string }) {
   const [messages, setMessages] = useState<Message[]>([
@@ -101,11 +152,15 @@ export function ReportChat({ simulationId }: { simulationId: string }) {
             <div
               className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-indigo-600 text-white whitespace-pre-wrap break-words"
                   : "bg-white/10 text-slate-100 border border-white/10"
               }`}
             >
-              {msg.content}
+              {msg.role === "user" ? (
+                msg.content
+              ) : (
+                <AssistantMarkdown content={msg.content} />
+              )}
             </div>
           </div>
         ))}

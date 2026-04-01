@@ -244,6 +244,51 @@ def get_providers() -> list[dict]:
 
 # ── Core HTTP call ────────────────────────────────────────────────────────────
 
+
+def _extract_assistant_text(data: dict) -> str | None:
+    """
+    Normalize OpenAI-compatible chat completion payloads.
+    Some hosts (e.g. DigitalOcean / multi-modal adapters) return content as a list of parts
+    or omit string content when using alternate fields.
+    """
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    ch0 = choices[0]
+    if not isinstance(ch0, dict):
+        return None
+    msg = ch0.get("message")
+    if not isinstance(msg, dict):
+        msg = {}
+
+    content = msg.get("content")
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "text" and part.get("text"):
+                parts.append(str(part["text"]))
+            elif isinstance(part.get("text"), str):
+                parts.append(part["text"])
+        joined = "".join(parts).strip()
+        if joined:
+            return joined
+
+    for key in ("refusal", "reasoning"):
+        val = msg.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    legacy = ch0.get("text")
+    if isinstance(legacy, str) and legacy.strip():
+        return legacy.strip()
+
+    return None
+
+
 def _use_openai_json_response_format(provider: Provider) -> bool:
     """
     response_format: {type: json_object} is OpenAI-specific. DigitalOcean-hosted models
@@ -322,9 +367,14 @@ async def _call_provider(
             raise AllProvidersExhausted(f"{provider.name} HTTP {resp.status_code}: {resp.text[:200]}")
 
         data = resp.json()
-        msg = data["choices"][0].get("message") or {}
-        content = msg.get("content")
-        if content is None or (isinstance(content, str) and not content.strip()):
+        content = _extract_assistant_text(data)
+        if content is None:
+            logger.warning(
+                "llm_empty_content_shape",
+                provider=provider.name,
+                key=key.label,
+                sample=str(data)[:500],
+            )
             raise AllProvidersExhausted(
                 f"{provider.name}: empty or missing message.content in response"
             )
