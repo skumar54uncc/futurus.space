@@ -94,8 +94,10 @@ export function Footer() {
               Shailesh Kumar
             </a>
           </p>
-          <p className="font-serif italic text-xs text-slate-400 text-center sm:text-right">
-            futurus — Latin: that which is about to be
+          <p className="text-center sm:text-right text-sm leading-relaxed text-slate-400 font-sans antialiased max-w-md sm:max-w-xl">
+            <span className="font-semibold text-slate-300">futurus</span>
+            <span className="text-slate-500 font-normal"> — </span>
+            <span className="font-normal">Latin: that which is about to be</span>
           </p>
         </div>
       </div>
