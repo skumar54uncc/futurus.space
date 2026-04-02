@@ -126,6 +126,15 @@ export interface ViabilitySummary {
   what_would_help: string;
 }
 
+export interface Citation {
+  id: number;
+  title: string;
+  text: string;
+  source: string;
+  url: string;
+  year?: number | null;
+}
+
 export interface Report {
   id: string;
   simulation_id: string;
@@ -137,6 +146,7 @@ export interface Report {
   pivot_suggestions: PivotSuggestion[];
   key_insights: KeyInsight[];
   viability_summary?: ViabilitySummary | null;
+  citations?: Citation[];
   share_token?: string;
   pdf_url?: string;
   created_at: string;

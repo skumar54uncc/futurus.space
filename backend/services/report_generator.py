@@ -16,6 +16,7 @@ from models.simulation import Simulation, SimulationEvent, Report
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.llm_router import call_llm
 from services.llm_text_json import coerce_llm_json_text
+from services.web_search import fetch_industry_citations
 
 logger = structlog.get_logger()
 
@@ -95,7 +96,8 @@ async def generate_report(
     simulation: Simulation, events: list[SimulationEvent], db: AsyncSession
 ) -> Report:
     metrics = _compute_metrics(events, simulation)
-    qualitative = await _run_report_agent(simulation, metrics, events)
+    citations = await fetch_industry_citations(simulation)
+    qualitative = await _run_report_agent(simulation, metrics, events, citations)
     viability = _merge_viability_summary(qualitative.get("viability_summary"), metrics["summary"])
 
     report = Report(
@@ -109,6 +111,7 @@ async def generate_report(
         pivot_suggestions=qualitative.get("pivot_suggestions", []),
         key_insights=qualitative.get("key_insights", []),
         viability_summary=viability,
+        citations=citations,
         share_token=secrets.token_urlsafe(24),
     )
 
@@ -284,13 +287,35 @@ def _compute_metrics(events: list, simulation: Simulation) -> dict:
 
 
 async def _run_report_agent(
-    simulation: Simulation, metrics: dict, events: list
+    simulation: Simulation, metrics: dict, events: list, citations: list
 ) -> dict:
     sampled_events = events[:50]
     events_text = "\n".join([
         f"Turn {e.turn} | {e.agent_segment} | {e.event_type}: {e.event_description}"
         for e in sampled_events
     ])
+
+    # Build verified sources block from Tavily results
+    if citations:
+        source_lines = ["=== VERIFIED INDUSTRY SOURCES ===",
+                        "Ground your factual claims in these real sources. Reference them as [1], [2], etc.",
+                        ""]
+        for c in citations:
+            year_str = f" ({c['year']})" if c.get("year") else ""
+            source_lines.append(f"[{c['id']}] {c['source']}{year_str}: {c['text']}")
+            source_lines.append(f"    URL: {c['url']}")
+            source_lines.append("")
+        citations_block = "\n".join(source_lines)
+        citation_instruction = (
+            "- Reference the verified sources above using [1], [2], etc. where relevant\n"
+            "- Do NOT invent statistics not present in the provided sources or simulation data"
+        )
+    else:
+        citations_block = ""
+        citation_instruction = (
+            "- Reference real industry statistics where you are confident in the data\n"
+            "- Clearly distinguish simulation findings from general industry knowledge"
+        )
 
     prompt = f"""You are an expert market analyst creating a real-world feasibility report based on a customer simulation.
 Your analysis should blend simulation data with real-world market knowledge.
@@ -310,6 +335,7 @@ Customer Segments: {json.dumps(metrics["persona_breakdown"], indent=2)}
 Key events (sample):
 {events_text}
 
+{citations_block}
 Analyze this and return ONLY valid JSON with these fields:
 
 {{
@@ -340,7 +366,7 @@ Analyze this and return ONLY valid JSON with these fields:
 
 IMPORTANT:
 - viability_summary must be readable by a non-expert founder — no jargon, no markdown asterisks
-- Reference REAL industry statistics and benchmarks where possible (e.g., "average coffee shop failure rate is 60% in first year")
+{citation_instruction}
 - Compare simulation results to real-world norms (e.g., "your 28% churn is above the industry average of 15-20%")
 - Use the actual customer segment names from the simulation, not generic terms
 - Be brutally honest about risks — don't sugarcoat

@@ -135,6 +135,17 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("production_schema_managed_by_alembic")
 
+    # Idempotent column additions — safe to run on every startup (ADD COLUMN IF NOT EXISTS).
+    # Add new nullable columns here instead of a full Alembic revision when the column has a safe default.
+    from sqlalchemy import text
+    _SAFE_MIGRATIONS = [
+        "ALTER TABLE reports ADD COLUMN IF NOT EXISTS citations JSONB DEFAULT '[]'",
+    ]
+    async with engine.begin() as conn:
+        for stmt in _SAFE_MIGRATIONS:
+            await conn.execute(text(stmt))
+    logger.info("safe_column_migrations_applied")
+
     await _recover_stale_queued_simulations()
     yield
 

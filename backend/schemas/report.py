@@ -62,6 +62,15 @@ class KeyInsight(BaseModel):
     actionability: str
 
 
+class Citation(BaseModel):
+    id: int
+    title: str = ""
+    text: str
+    source: str
+    url: str
+    year: Optional[int] = None
+
+
 class ReportResponse(BaseModel):
     id: uuid.UUID
     simulation_id: uuid.UUID
@@ -74,6 +83,7 @@ class ReportResponse(BaseModel):
     key_insights: list
     viability_summary: Optional[dict] = None
     ensemble_variance: Optional[dict] = None
+    citations: list[dict] = []
     pdf_url: Optional[str] = None
     investor_pdf_url: Optional[str] = None
     share_token: Optional[str] = None

@@ -100,6 +100,7 @@ class Report(Base):
     viability_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     ensemble_variance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    citations: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     pdf_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     investor_pdf_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)

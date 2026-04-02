@@ -10,6 +10,7 @@ import { FailureTimeline } from "@/components/report/FailureTimeline";
 import { RiskMatrix } from "@/components/report/RiskMatrix";
 import { PivotSuggestions } from "@/components/report/PivotSuggestions";
 import { ViabilitySummaryCard } from "@/components/report/ViabilitySummaryCard";
+import { CitationsList } from "@/components/report/CitationsList";
 import { ReportChartSkeleton } from "@/components/ui/skeleton";
 
 const AdoptionCurveChart = dynamic(
@@ -34,6 +35,7 @@ export function SharedReportView({ report }: { report: Report }) {
         <FailureTimeline events={report.failure_timeline} />
         <RiskMatrix risks={report.risk_matrix} />
         <PivotSuggestions suggestions={report.pivot_suggestions} insights={report.key_insights} />
+        <CitationsList citations={report.citations ?? []} />
       </ReportShell>
     </div>
   );

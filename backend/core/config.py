@@ -138,6 +138,11 @@ class Settings(BaseSettings):
     agent_tier2_count: int = 200     # agents that get LLM every 4 turns
     # remaining agents = Tier 3, probabilistic only
 
+    tavily_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("TAVILY_API_KEY"),
+    )
+
     zep_api_key: str = ""
 
     s3_bucket: str = Field(default="futurus-reports", validation_alias=AliasChoices("S3_BUCKET"))
