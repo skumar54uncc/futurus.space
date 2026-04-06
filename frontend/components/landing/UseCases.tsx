@@ -47,16 +47,16 @@ const cases = [
 
 export function UseCases() {
   return (
-    <section className="py-24 relative overflow-hidden">
+    <section id="use-cases" aria-label="Use cases" className="py-24 relative overflow-hidden">
       <div className="max-w-5xl mx-auto px-4">
         <div className="text-center mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] text-[11px] text-slate-500 uppercase tracking-widest mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] text-[11px] text-slate-300 uppercase tracking-widest mb-6">
             Use cases
           </div>
           <h2 className="text-3xl sm:text-4xl font-serif italic text-white mb-4">
             For every kind of idea
           </h2>
-          <p className="text-slate-500 text-sm max-w-xs mx-auto">
+          <p className="text-slate-300 text-sm max-w-xs mx-auto">
             Not just startups. Any idea. Any person.
           </p>
         </div>
@@ -72,12 +72,12 @@ export function UseCases() {
                 <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-[0.12em] px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20">
                   {c.tag}
                 </span>
-                <span className="text-slate-700 text-sm group-hover:text-indigo-400 transition-colors">&#8594;</span>
+                <span className="text-slate-300 text-sm group-hover:text-indigo-300 transition-colors">&#8594;</span>
               </div>
               <p className="text-sm font-medium text-white leading-snug">
                 &ldquo;{c.question}&rdquo;
               </p>
-              <p className="text-xs text-slate-600 mt-auto">{c.insight}</p>
+              <p className="text-xs text-slate-300 mt-auto">{c.insight}</p>
             </Link>
           ))}
         </div>

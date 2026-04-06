@@ -12,6 +12,7 @@ import {
   Home,
   Mail,
   Zap,
+  Lightbulb,
 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -22,6 +23,7 @@ const navigation = [
   { name: "Home", href: "/", icon: Home, external: true },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "New simulation", href: "/new", icon: Plus },
+  { name: "Ideas", href: "/ideas", icon: Lightbulb },
   { name: "Settings", href: "/settings", icon: Settings },
   { name: "Contact", href: "/contact", icon: Mail, external: true },
 ];
@@ -30,7 +32,7 @@ function getResetLabel(billingStart: string): string {
   const resetAt = new Date(new Date(billingStart).getTime() + 24 * 60 * 60 * 1000);
   const now = new Date();
   const diffMs = resetAt.getTime() - now.getTime();
-  if (diffMs <= 0) return "Resets soon";
+  if (diffMs <= 0) return "Resets now";
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
   if (hours > 0) return `Resets in ${hours}h ${mins}m`;
@@ -44,14 +46,24 @@ export function Sidebar() {
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .get<UserProfile>("/api/auth/me")
-      .then(({ data }) => {
+
+    const loadProfile = async () => {
+      try {
+        const { data } = await api.get<UserProfile>("/api/auth/me");
         if (!cancelled) setProfile(data);
-      })
-      .catch(() => {});
+      } catch {
+        // Ignore transient auth/network errors; the widget will retry on the next tick.
+      }
+    };
+
+    void loadProfile();
+    const interval = window.setInterval(() => {
+      void loadProfile();
+    }, 60_000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, []);
 

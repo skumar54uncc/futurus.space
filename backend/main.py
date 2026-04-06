@@ -69,7 +69,7 @@ from api.middleware.cost_guard import CostGuardMiddleware
 from api.middleware.rate_limiter import limiter, rate_limit_exceeded_handler
 from api.middleware.request_id import RequestIDMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
-from api.routes import auth, chat, reports, simulations
+from api.routes import auth, chat, ideas, reports, simulations
 from core.database import AsyncSessionLocal, Base, engine
 from core.redis import clear_upstash_client_cache, close_redis, get_redis
 from core.security import verify_clerk_token
@@ -313,6 +313,7 @@ app.include_router(auth.router)
 app.include_router(simulations.router)
 app.include_router(reports.router)
 app.include_router(chat.router)
+app.include_router(ideas.router)
 
 
 static_dir = Path(__file__).parent / "static" / "reports"

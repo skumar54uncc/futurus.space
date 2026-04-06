@@ -4,6 +4,7 @@ Generates follow-up questions when the idea is too vague.
 """
 import asyncio
 import json
+import re
 
 from core.config import settings
 from services.llm_router import AllProvidersExhausted, call_llm
@@ -11,6 +12,82 @@ from services.llm_text_json import coerce_llm_json_text
 
 VALID_VERTICALS = ["saas", "consumer_app", "marketplace", "physical_product", "service_business", "enterprise"]
 VALID_PRICING_MODELS = ["freemium", "subscription", "one-time", "usage", "hybrid"]
+
+
+def _currency_from_text(text: str) -> str:
+    t = text.lower()
+    if any(x in t for x in ["india", "indian", "mumbai", "delhi", "bangalore", "bengaluru", "chennai", "hyderabad"]):
+        return "₹"
+    if any(x in t for x in ["uk", "united kingdom", "london", "england", "britain"]):
+        return "£"
+    if any(x in t for x in ["europe", "european", "germany", "france", "spain", "italy", "netherlands"]):
+        return "€"
+    return "$"
+
+
+def _guess_vertical(text: str) -> str:
+    t = text.lower()
+    if any(x in t for x in ["app", "mobile", "social", "community"]):
+        return "consumer_app"
+    if any(x in t for x in ["marketplace", "buy and sell", "seller", "vendor"]):
+        return "marketplace"
+    if any(x in t for x in ["subscription", "saas", "software", "tool", "dashboard", "automation"]):
+        return "saas"
+    if any(x in t for x in ["service", "agency", "consulting", "studio"]):
+        return "service_business"
+    if any(x in t for x in ["hardware", "device", "physical", "product"]):
+        return "physical_product"
+    return "saas"
+
+
+def _fallback_analysis(raw_idea: str, *, include_questions: bool) -> dict:
+    cleaned = " ".join(raw_idea.strip().split())
+    if not cleaned:
+        cleaned = "New business idea"
+    words = re.findall(r"[A-Za-z0-9']+", cleaned)
+    short_name = " ".join(words[:4]).strip().title() if words else "New Venture"
+    if len(short_name) < 3:
+        short_name = "New Venture"
+
+    vertical = _guess_vertical(cleaned)
+    currency = _currency_from_text(cleaned)
+
+    if currency == "₹":
+        price_points = {"starter": 149, "growth": 399}
+    elif currency == "€":
+        price_points = {"starter": 9, "growth": 29}
+    elif currency == "£":
+        price_points = {"starter": 8, "growth": 24}
+    else:
+        price_points = {"starter": 9, "growth": 29}
+
+    out = {
+        "business_name": short_name,
+        "idea_description": (
+            f"{cleaned}. This concept is framed as a practical early-stage business "
+            "that can be tested quickly with a lightweight first launch."
+        ),
+        "vertical": vertical,
+        "target_market": "Early adopters in local and online communities who need this outcome now.",
+        "pricing_model": "freemium",
+        "currency": currency,
+        "price_points": price_points,
+        "gtm_channels": ["social_media", "community_outreach", "local_partnerships"],
+        "competitors": [],
+        "key_assumptions": [
+            {"variable": "churn_rate_monthly", "value": "7%"},
+            {"variable": "word_of_mouth_rate", "value": "12%"},
+            {"variable": "trial_to_paid_conversion", "value": "10%"},
+        ],
+    }
+    if include_questions:
+        out["confidence"] = "low"
+        out["follow_up_questions"] = [
+            "Who is your first target customer group?",
+            "How would you like to make money from this idea?",
+            "What is the main problem this solves better than current options?",
+        ]
+    return out
 
 
 async def analyze_idea(raw_idea: str) -> dict:
@@ -72,13 +149,12 @@ IMPORTANT RULES:
             ),
             timeout=settings.idea_analysis_total_deadline_seconds,
         )
-    except asyncio.TimeoutError as exc:
-        raise AllProvidersExhausted(
-            "Idea analysis timed out — inference may be slow. Try again in a moment."
-        ) from exc
-    result = json.loads(coerce_llm_json_text(content))
-    result = _validate_and_fix(result)
-    return result
+        result = json.loads(coerce_llm_json_text(content))
+        result = _validate_and_fix(result)
+        return result
+    except (AllProvidersExhausted, asyncio.TimeoutError):
+        # Non-blocking fallback so users can still progress through the wizard.
+        return _fallback_analysis(raw_idea, include_questions=True)
 
 
 async def refine_idea(raw_idea: str, answers: list[dict]) -> dict:
@@ -137,13 +213,13 @@ IMPORTANT RULES:
             ),
             timeout=settings.idea_analysis_total_deadline_seconds,
         )
-    except asyncio.TimeoutError as exc:
-        raise AllProvidersExhausted(
-            "Idea refinement timed out — inference may be slow. Try again in a moment."
-        ) from exc
-    result = json.loads(coerce_llm_json_text(content))
-    result = _validate_and_fix(result)
-    return result
+        result = json.loads(coerce_llm_json_text(content))
+        result = _validate_and_fix(result)
+        return result
+    except (AllProvidersExhausted, asyncio.TimeoutError):
+        joined_answers = " ".join(str(a.get("answer") or "") for a in answers if isinstance(a, dict)).strip()
+        merged = raw_idea if not joined_answers else f"{raw_idea}. {joined_answers}"
+        return _fallback_analysis(merged, include_questions=False)
 
 
 def _normalize_vertical(raw: str | None) -> str:

@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { trackEvent } from "@/lib/analytics";
 import toast from "react-hot-toast";
 import { Loader2, Send, Shield } from "lucide-react";
 
@@ -17,9 +18,11 @@ export function ContactForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !message.trim()) {
+      trackEvent("contact_submit_invalid");
       toast.error("A name, email, and a few words in the message are all I need.");
       return;
     }
+    trackEvent("contact_submit_started");
     setSending(true);
     try {
       const res = await fetch("/api/contact", {
@@ -37,12 +40,14 @@ export function ContactForm() {
         throw new Error(typeof data.error === "string" ? data.error : "Could not send that — try again in a moment.");
       }
       toast.success("Got it. I’ll read this and reply from my own inbox when I can.");
+      trackEvent("contact_submit_success");
       setName("");
       setEmail("");
       setSubject("");
       setMessage("");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong on our side.";
+      trackEvent("contact_submit_failed");
       toast.error(msg);
     } finally {
       setSending(false);
@@ -75,6 +80,8 @@ export function ContactForm() {
             onChange={(e) => setName(e.target.value)}
             placeholder="First name is fine"
             autoComplete="name"
+            required
+            aria-required="true"
             className="bg-white/[0.04] border-white/10 placeholder:text-slate-600"
           />
         </div>
@@ -89,6 +96,8 @@ export function ContactForm() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="your@email.com"
             autoComplete="email"
+            required
+            aria-required="true"
             className="bg-white/[0.04] border-white/10 placeholder:text-slate-600"
           />
         </div>
@@ -114,6 +123,8 @@ export function ContactForm() {
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Ask anything, share feedback, or describe a rough edge you ran into — short or long is fine."
             rows={6}
+            required
+            aria-required="true"
             className="bg-white/[0.04] border-white/10 resize-y min-h-[150px] placeholder:text-slate-600"
           />
         </div>

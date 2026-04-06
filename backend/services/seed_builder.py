@@ -11,6 +11,7 @@ import httpx
 
 from schemas.simulation import SimulationCreateRequest
 from services.llm_router import call_llm
+from services.mirai_lite import build_daily_macro_context_modifier
 
 # SECURITY: SSRF prevention for user-supplied competitor URLs
 ALLOWED_SCHEMES = frozenset({"http", "https"})
@@ -60,6 +61,12 @@ async def build_seed(request: SimulationCreateRequest) -> dict:
         [c.model_dump() for c in request.competitors]
     )
     market_context = await _generate_market_context(request, competitor_context)
+    macro_context = await build_daily_macro_context_modifier(
+        request.target_market,
+        request.vertical,
+    )
+    if macro_context:
+        market_context = f"{market_context}\n\n=== DAILY MACRO SHOCKS ===\n{macro_context}"
 
     seed = {
         "world_description": market_context,
@@ -75,6 +82,7 @@ async def build_seed(request: SimulationCreateRequest) -> dict:
             "description": request.target_market,
             "competitors": competitor_context,
             "size_estimate": "medium",
+            "macro_shocks": macro_context,
         },
         "assumptions": {
             item.variable: item.value for item in request.key_assumptions
@@ -152,6 +160,6 @@ Write in present tense. No fluff.
     return await call_llm(
         messages=[{"role": "user", "content": prompt}],
         agent_tier=1,
-        max_tokens=1000,
+        max_tokens=650,
         temperature=0.3,
     )

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, Plus, Settings, Home, Mail } from "lucide-react";
+import { LayoutDashboard, Plus, Settings, Home, Mail, Lightbulb } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 
@@ -13,8 +13,8 @@ const mobileNav: Array<{
   { href: "/", icon: Home, label: "Home" },
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/new", icon: Plus, label: "New", primary: true },
+  { href: "/ideas", icon: Lightbulb, label: "Ideas" },
   { href: "/settings", icon: Settings, label: "Settings" },
-  { href: "/contact", icon: Mail, label: "Contact" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

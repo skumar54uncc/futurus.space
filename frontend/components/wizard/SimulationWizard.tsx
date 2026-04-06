@@ -5,6 +5,8 @@ import { useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { api } from "@/lib/api";
 import { OPEN_ACCESS_AGENT_CAP, OPEN_ACCESS_TURN_CAP } from "@/lib/simulationLimits";
+import { LAUNCH_PRESETS, type LaunchPreset } from "@/lib/simulationLimits";
+import { trackEvent } from "@/lib/analytics";
 import { FreeTierLimitsNotice } from "@/components/landing/FreeTierLimitsNotice";
 import {
   buildSimulationCreatePayload,
@@ -126,7 +128,13 @@ function EditableList({ label, items, onUpdate }: { label: string; items: string
   );
 }
 
-function PhaseReview() {
+function PhaseReview({
+  selectedPreset,
+  onSelectPreset,
+}: {
+  selectedPreset: LaunchPreset;
+  onSelectPreset: (preset: LaunchPreset) => void;
+}) {
   const { generated_fields, updateGeneratedField } = useWizardStore();
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editingPricing, setEditingPricing] = useState(false);
@@ -271,9 +279,37 @@ function PhaseReview() {
       </div>
 
       <div className="space-y-4">
+        <div className="rounded-xl border border-[--border-subtle] bg-[--bg-surface] p-4">
+          <p className="text-xs font-medium text-[--text-tertiary] uppercase tracking-wide mb-3">Simulation scale</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {LAUNCH_PRESETS.map((preset) => {
+              const active = preset.id === selectedPreset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => onSelectPreset(preset)}
+                  className={`text-left rounded-[10px] px-3.5 py-3 border transition-colors ${
+                    active
+                      ? "border-indigo-500/50 bg-indigo-500/10"
+                      : "border-[--border-subtle] bg-[--bg-elevated] hover:border-[--border-default]"
+                  }`}
+                  aria-pressed={active}
+                >
+                  <p className="text-sm font-medium text-[--text-primary]">{preset.label}</p>
+                  <p className="text-xs text-[--text-secondary] mt-0.5">
+                    {preset.agent_count.toLocaleString()} agents x {preset.max_turns} turns
+                  </p>
+                  <p className="text-[11px] text-[--text-tertiary] mt-1">{preset.note}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="rounded-xl border border-[--border-accent] bg-[--accent-primary-muted] px-4 py-4 text-center text-sm text-[--text-primary]">
-          Ready to launch! We&apos;ll run up to {OPEN_ACCESS_AGENT_CAP.toLocaleString()} AI customer agents across{" "}
-          {OPEN_ACCESS_TURN_CAP} simulation turns (capped for cost and speed).
+          Ready to launch {selectedPreset.label.toLowerCase()} mode: {selectedPreset.agent_count.toLocaleString()} agents x {selectedPreset.max_turns} turns.
+          Platform cap remains {OPEN_ACCESS_AGENT_CAP.toLocaleString()} agents x {OPEN_ACCESS_TURN_CAP} turns.
         </div>
         <FreeTierLimitsNotice variant="dark" />
       </div>
@@ -298,6 +334,7 @@ function toastDetailFromApiError(err: unknown, maxLen = 220): string | null {
 export function SimulationWizard() {
   const store = useWizardStore();
   const [loading, setLoading] = useState(false);
+  const [launchPreset, setLaunchPreset] = useState<LaunchPreset>(LAUNCH_PRESETS[0]);
   const [quotaDialog, setQuotaDialog] = useState<{ title: string; body: string } | null>(null);
   const router = useRouter();
   const requestLock = useRef(false);
@@ -309,6 +346,7 @@ export function SimulationWizard() {
       return;
     }
     requestLock.current = true;
+    trackEvent("idea_analyze_started");
     setLoading(true);
     try {
       const { data } = await api.post(
@@ -320,14 +358,17 @@ export function SimulationWizard() {
       const { confidence, follow_up_questions, ...raw } = data;
 
       if (confidence === "low" && follow_up_questions?.length > 0) {
+        trackEvent("idea_analyze_needs_questions");
         store.setFollowUpQuestions(follow_up_questions);
         store.setAnswers(follow_up_questions.map((q: string) => ({ question: q, answer: "" })));
         store.setPhase("questions");
       } else {
+        trackEvent("idea_analyze_ready_review");
         store.setGeneratedFields(normalizeGeneratedFieldsFromApi(raw as Record<string, unknown>));
         store.setPhase("review");
       }
     } catch {
+      trackEvent("idea_analyze_failed");
       toast.error("Failed to analyze your idea. Please try again.", { id: TOAST_ID_ANALYZE });
     } finally {
       setLoading(false);
@@ -343,6 +384,7 @@ export function SimulationWizard() {
       return;
     }
     requestLock.current = true;
+    trackEvent("idea_refine_started");
     setLoading(true);
     try {
       const { data } = await api.post(
@@ -352,7 +394,9 @@ export function SimulationWizard() {
       );
       store.setGeneratedFields(normalizeGeneratedFieldsFromApi(data as Record<string, unknown>));
       store.setPhase("review");
+      trackEvent("idea_refine_success");
     } catch (err) {
+      trackEvent("idea_refine_failed");
       const hint = toastDetailFromApiError(err);
       toast.error(
         hint ?? "Failed to process your answers. Please try again.",
@@ -373,14 +417,24 @@ export function SimulationWizard() {
       return;
     }
     requestLock.current = true;
+    trackEvent("simulation_launch_started", {
+      agents: launchPreset.agent_count,
+      turns: launchPreset.max_turns,
+      preset: launchPreset.id,
+    });
     setLoading(true);
     try {
-      const payload = buildSimulationCreatePayload(store.generated_fields);
+      const payload = buildSimulationCreatePayload(store.generated_fields, {
+        agent_count: launchPreset.agent_count,
+        max_turns: launchPreset.max_turns,
+      });
       const { data } = await api.post("/api/simulations/", payload);
+      trackEvent("simulation_launch_success");
       router.push(`/simulation/${data.id}`);
       // Reset after navigation starts so the phase change doesn't flash the idea screen
       setTimeout(() => store.reset(), 500);
     } catch (err: unknown) {
+      trackEvent("simulation_launch_failed");
       const parsed = parseSimulationLaunchError(err);
       if (parsed.kind === "daily_limit") {
         setQuotaDialog({ title: parsed.title, body: parsed.body });
@@ -426,7 +480,9 @@ export function SimulationWizard() {
 
       {store.phase === "idea" && <PhaseIdea />}
       {store.phase === "questions" && <PhaseQuestions />}
-      {store.phase === "review" && <PhaseReview />}
+      {store.phase === "review" && (
+        <PhaseReview selectedPreset={launchPreset} onSelectPreset={setLaunchPreset} />
+      )}
 
       <div
         className={`flex mt-8 gap-3 items-center ${store.phase === "idea" ? "justify-end" : "justify-between flex-wrap"}`}

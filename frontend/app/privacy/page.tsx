@@ -39,6 +39,16 @@ export default function PrivacyPage() {
         </li>
       </ul>
 
+      <h2>Cookies and consent</h2>
+      <p>
+        Futurus uses essential browser storage for core functionality (for example sign-in/session flows) and,
+        only when you explicitly accept, analytics storage for product metrics like page views and key events.
+        If you decline analytics consent, non-essential analytics tracking remains off.
+      </p>
+      <p>
+        You can change your consent choice by clearing site storage in your browser and reloading the page.
+      </p>
+
       <h2>How we use information</h2>
       <ul>
         <li>To provide, operate, and improve Futurus (including AI-assisted features).</li>

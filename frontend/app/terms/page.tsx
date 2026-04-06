@@ -79,6 +79,13 @@ export default function TermsPage() {
         practices.
       </p>
 
+      <h2>Cookies and analytics consent</h2>
+      <p>
+        Futurus may use essential storage for core site behavior and optional analytics only after your consent.
+        By accepting analytics consent in the banner, you permit measurement of product usage events such as page
+        views and feature interactions. You can decline optional analytics and continue using core functionality.
+      </p>
+
       <h2>Governing law</h2>
       <p>
         These Terms are governed by the laws applicable in your primary place of residence or, if we specify a

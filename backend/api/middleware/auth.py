@@ -47,12 +47,16 @@ async def get_current_user(
             email=email or f"{user_id}@clerk.user",
             full_name=payload.get("name", payload.get("first_name", "")),
             plan_tier="free",
-            # credit_balance intentionally omitted — uses model default of 1
+            # credit_balance intentionally omitted — uses model default of 2
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
         logger.info("user_auto_created", user_id=user_id, email=user.email)
+
+    from services.credit_service import maybe_reset_daily_credits
+
+    await maybe_reset_daily_credits(user, db)
 
     user.last_active_at = datetime.now(timezone.utc)
     await db.commit()

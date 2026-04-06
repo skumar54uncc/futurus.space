@@ -4,6 +4,7 @@ This is a long-running task (5-20 min) — must be async-safe and retriable.
 """
 import asyncio
 import json
+import time
 import sys
 import uuid
 
@@ -100,7 +101,11 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
                 return
 
             await _update_status(db, sim, SimulationStatus.BUILDING_SEED)
-            _emit_progress(simulation_id, "Building market context from your inputs...", 5)
+            _emit_progress(
+                simulation_id,
+                "MIRAI is running: collecting latest inflation, growth, regulation, and sentiment context...",
+                5,
+            )
 
             request = SimulationCreateRequest(
                 business_name=sim.business_name,
@@ -119,7 +124,11 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             if not await _simulation_status_is(db, sim.id, SimulationStatus.BUILDING_SEED):
                 logger.info("simulation_worker_abort_after_seed", simulation_id=simulation_id)
                 return
-            _emit_progress(simulation_id, "Market context built. Generating customer profiles...", 15)
+            _emit_progress(
+                simulation_id,
+                "MIRAI context applied. Market seed built. Generating customer profiles...",
+                15,
+            )
 
             await _update_status(db, sim, SimulationStatus.GENERATING_PERSONAS)
             personas = sim.personas if sim.personas else await generate_personas(
@@ -139,6 +148,10 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             await _update_status(db, sim, SimulationStatus.RUNNING)
             cost_governor = CostGovernor(max_cost_usd=settings.max_cost_per_simulation_usd)
             adapter = MiroFishAdapter(seed=seed, personas=personas, cost_governor=cost_governor)
+            run_started = time.perf_counter()
+            turn_wall_times_ms: list[float] = []
+            commit_interval = max(1, int(getattr(settings, "simulation_turn_commit_interval", 2) or 2))
+            pending_turn_writes = 0
 
             events_collected = []
             async for turn_result in adapter.run(max_turns=sim.max_turns):
@@ -170,7 +183,13 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
                 sim.current_turn = turn_result["turn"]
                 sim.agents_active = turn_result.get("agents_active", 0)
                 sim.actual_cost_usd = cost_governor.total_cost_usd
-                await db.commit()
+                if isinstance(turn_result.get("turn_wall_time_ms"), (int, float)):
+                    turn_wall_times_ms.append(float(turn_result["turn_wall_time_ms"]))
+                pending_turn_writes += 1
+                # Batch commit every N turns to reduce write latency at high scales.
+                if pending_turn_writes >= commit_interval:
+                    await db.commit()
+                    pending_turn_writes = 0
 
                 progress_pct = 25 + int((turn_result["turn"] / sim.max_turns) * 55)
                 _emit_turn_update(
@@ -189,14 +208,47 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
                     events_persisted=len(turn_events),
                 )
 
+            if pending_turn_writes > 0:
+                await db.commit()
+
             if not await _simulation_status_is(db, sim.id, SimulationStatus.RUNNING):
                 logger.info("simulation_worker_skip_report_phase", simulation_id=simulation_id)
                 return
 
             await _update_status(db, sim, SimulationStatus.GENERATING_REPORT)
-            _emit_progress(simulation_id, "Simulation complete. Building your report...", 85)
+            _emit_progress(
+                simulation_id,
+                "Simulation complete. MIRAI is running final macro alignment checks...",
+                85,
+            )
+            _emit_progress(
+                simulation_id,
+                "TimesFM is running: validating adoption curve statistically (with fast fallback if needed)...",
+                88,
+            )
+            _emit_progress(simulation_id, "Compiling report narrative, risk matrix, and citations...", 91)
 
             report = await generate_report(sim, events_collected, db)
+
+            try:
+                viability = dict(report.viability_summary or {})
+                run_seconds = round(time.perf_counter() - run_started, 2)
+                timeout_count = int(getattr(adapter, "timeout_count", 0) or 0)
+                wall_stats = {
+                    "turns_completed": int(sim.current_turn or 0),
+                    "avg_turn_ms": round(sum(turn_wall_times_ms) / len(turn_wall_times_ms), 2) if turn_wall_times_ms else 0.0,
+                    "max_turn_ms": round(max(turn_wall_times_ms), 2) if turn_wall_times_ms else 0.0,
+                    "min_turn_ms": round(min(turn_wall_times_ms), 2) if turn_wall_times_ms else 0.0,
+                    "wall_clock_seconds": run_seconds,
+                    "agent_timeout_count": timeout_count,
+                    "total_cost_usd": round(float(sim.actual_cost_usd or 0.0), 4),
+                    "cost_cap_usd": round(float(settings.max_cost_per_simulation_usd), 4),
+                }
+                viability["run_diagnostics"] = wall_stats
+                report.viability_summary = viability
+                await db.commit()
+            except Exception:
+                logger.warning("report_run_diagnostics_attach_failed", simulation_id=simulation_id)
 
             sim.status = SimulationStatus.COMPLETED
             sim.completed_at = datetime.now(timezone.utc)

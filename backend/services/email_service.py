@@ -215,6 +215,80 @@ async def send_report_shared(
     return await _send_email(to_email, subject, html_body)
 
 
+async def send_credit_reset_notification(
+    to_email: str,
+    user_name: str,
+    daily_limit: int,
+    reset_url: str,
+) -> bool:
+    subject = "Your Futurus credits have reset"
+    html_body = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#010109;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#010109;min-height:100vh;">
+  <tr>
+    <td align="center" style="padding:40px 16px;">
+      <table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+        <tr>
+          <td style="padding:0 0 24px 0;">
+            <span style="font-family:Georgia,'Times New Roman',serif;font-size:22px;font-style:italic;color:#f8fafc;letter-spacing:-0.01em;">Futurus</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="background:linear-gradient(135deg,#0d0d1a 0%,#0a0a1f 100%);border:1px solid rgba(99,102,241,0.22);border-radius:18px;padding:36px 32px;">
+            <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+              <tr>
+                <td style="background:rgba(96,165,250,0.10);border:1px solid rgba(96,165,250,0.24);border-radius:999px;padding:6px 14px;">
+                  <span style="font-size:12px;font-weight:600;color:#93c5fd;letter-spacing:0.06em;text-transform:uppercase;">Daily credits refreshed</span>
+                </td>
+              </tr>
+            </table>
+
+            <h1 style="margin:0 0 10px;font-size:26px;font-weight:600;color:#f8fafc;line-height:1.25;">Your simulation credits are ready again</h1>
+            <p style="margin:0 0 22px;font-size:16px;color:#94a3b8;line-height:1.7;">Hi {user_name}, your daily Futurus credits have reset. You can launch new simulations, test ideas, and review the next set of agent insights.</p>
+
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+              <tr>
+                <td style="background:rgba(0,0,0,0.35);border:1px solid rgba(99,102,241,0.2);border-radius:14px;padding:18px 20px;">
+                  <p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#64748b;letter-spacing:0.1em;text-transform:uppercase;">Available today</p>
+                  <p style="margin:0;font-size:34px;font-weight:700;color:#22c55e;line-height:1;">{daily_limit}</p>
+                  <p style="margin:8px 0 0;font-size:14px;color:#94a3b8;line-height:1.6;">Use them to run simulations, compare ideas, and publish the strongest ones to the public dashboard.</p>
+                </td>
+              </tr>
+            </table>
+
+            <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:22px;">
+              <tr>
+                <td style="background:#6366f1;border-radius:10px;">
+                  <a href="{reset_url}" style="display:inline-block;padding:14px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:0.01em;">Start a new simulation &rarr;</a>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">If you were already in the app, refresh the page to see the new limit immediately. You can also visit <a href="https://{settings.app_domain}" style="color:#93c5fd;text-decoration:none;">{settings.app_domain}</a> at any time.</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:18px 0 0;">
+            <p style="margin:0;font-size:12px;color:#334155;line-height:1.6;text-align:center;">Futurus · Predict ideas before you build them</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>"""
+    return await _send_email(to_email, subject, html_body)
+
+
 def _smtp_configured() -> bool:
     return bool(
         settings.smtp_host.strip()

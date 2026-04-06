@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.llm_router import call_llm
 from services.llm_text_json import coerce_llm_json_text
 from services.web_search import fetch_industry_citations
+from services.validation_orchestrator import build_comprehensive_validation
 
 logger = structlog.get_logger()
 
@@ -96,9 +97,41 @@ async def generate_report(
     simulation: Simulation, events: list[SimulationEvent], db: AsyncSession
 ) -> Report:
     metrics = _compute_metrics(events, simulation)
-    citations = await fetch_industry_citations(simulation)
-    qualitative = await _run_report_agent(simulation, metrics, events, citations)
+    
+    # Build market context for validators
+    market_data = {
+        "target_market": simulation.target_market,
+        "vertical": simulation.vertical,
+        "pricing_model": simulation.pricing_model,
+        "key_assumptions": simulation.key_assumptions,
+        "competitors": simulation.competitors,
+    }
+    
+    # Run unified validation (TimesFM + MIRAI when available)
+    validation = build_comprehensive_validation(
+        metrics["adoption_curve"],
+        metrics["summary"],
+        market_data
+    )
+    
+    citations = await fetch_industry_citations(simulation, simulation_mode=True)
+    qualitative = await _run_report_agent(simulation, metrics, validation, events, citations)
     viability = _merge_viability_summary(qualitative.get("viability_summary"), metrics["summary"])
+    
+    # Store comprehensive validation results
+    viability["statistical_validation"] = validation.get("timesfm", {})
+    viability["macro_validation"] = validation.get("mirai", {})
+    viability["macro_context"] = validation.get("macro_context", {})
+    viability["forecast_cache"] = validation.get("forecast_cache", {})
+    viability["composite_validation_risk"] = validation.get("composite_risk", "low")
+    
+    # Add composite warnings to viability summary
+    if validation.get("warning_flags"):
+        existing_risks = viability.get("what_could_go_wrong", "")
+        new_warnings = "; ".join(validation["warning_flags"])
+        viability["what_could_go_wrong"] = (
+            f"{existing_risks} Statistical/macro validation flagged: {new_warnings}."
+        ).strip()
 
     report = Report(
         id=uuid.uuid4(),
@@ -287,7 +320,7 @@ def _compute_metrics(events: list, simulation: Simulation) -> dict:
 
 
 async def _run_report_agent(
-    simulation: Simulation, metrics: dict, events: list, citations: list
+    simulation: Simulation, metrics: dict, validation: dict, events: list, citations: list
 ) -> dict:
     sampled_events = events[:50]
     events_text = "\n".join([
@@ -331,6 +364,7 @@ Competitors: {json.dumps(simulation.competitors)}
 === SIMULATION DATA ===
 Metrics: {json.dumps(metrics["summary"], indent=2)}
 Customer Segments: {json.dumps(metrics["persona_breakdown"], indent=2)}
+TimesFM Validation: {json.dumps(validation, indent=2)}
 
 Key events (sample):
 {events_text}
@@ -368,6 +402,7 @@ IMPORTANT:
 - viability_summary must be readable by a non-expert founder — no jargon, no markdown asterisks
 {citation_instruction}
 - Compare simulation results to real-world norms (e.g., "your 28% churn is above the industry average of 15-20%")
+- If TimesFM Validation shows a medium/high divergence, explicitly explain that the agents are optimistic but the statistical trajectory is flatter or riskier.
 - Use the actual customer segment names from the simulation, not generic terms
 - Be brutally honest about risks — don't sugarcoat
 """

@@ -28,11 +28,11 @@ export default function ContactPage() {
           Futurus is a solo, curiosity-driven project. If something&apos;s unclear, you&apos;ve hit a bug, or you just
           want to talk through an idea — write me. I read every message and I&apos;m happy to help.
         </p>
-        <p className="text-slate-500 text-sm max-w-xl mb-8">
+        <p className="text-slate-300 text-sm max-w-xl mb-8">
           No pressure, no sales pitch — just a direct line to the person who built this.
         </p>
         <ContactForm />
-        <p className="text-xs text-slate-600 mt-10 max-w-lg">
+        <p className="text-xs text-slate-400 mt-10 max-w-lg">
           How we handle what you send: see our{" "}
           <Link href="/privacy" className="text-indigo-400/90 hover:text-indigo-300 underline underline-offset-2">
             Privacy policy

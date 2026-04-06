@@ -8,24 +8,24 @@ export function Footer() {
         <div className="flex flex-col md:flex-row items-start justify-between gap-10 flex-wrap">
           <div className="max-w-[280px]">
             <Logo size="md" />
-            <p className="text-sm text-slate-500 mt-3 leading-relaxed">
+            <p className="text-sm text-slate-300 mt-3 leading-relaxed">
               See what is about to be. Multi-agent simulation for anyone with an idea worth testing.
             </p>
-            <p className="text-xs text-slate-400 mt-3 italic">
+            <p className="text-xs text-slate-300 mt-3 italic">
               From Latin <em>futurus</em>: that which is about to be.
             </p>
           </div>
 
           <div className="flex gap-12 flex-wrap">
             <div>
-              <h4 className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-4">
+              <h3 className="text-xs font-medium text-slate-300 uppercase tracking-widest mb-4">
                 Product
-              </h4>
+              </h3>
               <ul className="space-y-2 text-sm">
                 <li>
                   <Link
                     href="/#how-it-works"
-                    className="text-slate-500 hover:text-white transition-colors duration-150"
+                    className="text-slate-300 hover:text-white transition-colors duration-150"
                   >
                     How it works
                   </Link>
@@ -33,7 +33,7 @@ export function Footer() {
                 <li>
                   <Link
                     href="/sign-up"
-                    className="text-slate-500 hover:text-white transition-colors duration-150"
+                    className="text-slate-300 hover:text-white transition-colors duration-150"
                   >
                     Get started
                   </Link>
@@ -41,7 +41,7 @@ export function Footer() {
                 <li>
                   <Link
                     href="/#faq"
-                    className="text-slate-500 hover:text-white transition-colors duration-150"
+                    className="text-slate-300 hover:text-white transition-colors duration-150"
                   >
                     FAQ
                   </Link>
@@ -49,7 +49,7 @@ export function Footer() {
                 <li>
                   <Link
                     href="/contact"
-                    className="text-slate-500 hover:text-white transition-colors duration-150"
+                    className="text-slate-300 hover:text-white transition-colors duration-150"
                   >
                     Contact
                   </Link>
@@ -57,14 +57,14 @@ export function Footer() {
               </ul>
             </div>
             <div>
-              <h4 className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-4">
+              <h3 className="text-xs font-medium text-slate-300 uppercase tracking-widest mb-4">
                 Legal
-              </h4>
+              </h3>
               <ul className="space-y-2 text-sm">
                 <li>
                   <Link
                     href="/privacy"
-                    className="text-slate-500 hover:text-white transition-colors duration-150"
+                    className="text-slate-300 hover:text-white transition-colors duration-150"
                   >
                     Privacy
                   </Link>
@@ -72,7 +72,7 @@ export function Footer() {
                 <li>
                   <Link
                     href="/terms"
-                    className="text-slate-500 hover:text-white transition-colors duration-150"
+                    className="text-slate-300 hover:text-white transition-colors duration-150"
                   >
                     Terms
                   </Link>
@@ -83,7 +83,7 @@ export function Footer() {
         </div>
 
         <div className="mt-12 pt-8 border-t border-white/[0.04] flex flex-col sm:flex-row items-center justify-between gap-4 flex-wrap">
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-slate-400">
             © {new Date().getFullYear()} Futurus · Built by{" "}
             <a
               href="https://www.linkedin.com/in/shailesh-entrant/"
@@ -94,10 +94,8 @@ export function Footer() {
               Shailesh Kumar
             </a>
           </p>
-          <p className="text-center sm:text-right text-sm leading-relaxed text-slate-400 font-sans antialiased max-w-md sm:max-w-xl">
-            <span className="font-semibold text-slate-300">futurus</span>
-            <span className="text-slate-500 font-normal"> — </span>
-            <span className="font-normal">Latin: that which is about to be</span>
+          <p className="text-center sm:text-right text-sm leading-relaxed text-slate-300 font-sans antialiased max-w-md sm:max-w-xl">
+            Built thoughtfully for founders, creators, and curious minds.
           </p>
         </div>
       </div>

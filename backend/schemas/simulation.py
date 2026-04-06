@@ -57,8 +57,8 @@ class SimulationCreateRequest(BaseModel):
     key_assumptions: list[AssumptionInput] = Field(default_factory=list)
     vertical: str = Field(..., pattern="^(saas|consumer_app|marketplace|physical_product|service_business|enterprise)$")
     personas: list[PersonaInput] = Field(default_factory=list)
-    agent_count: int = Field(default=50, ge=10, le=1000)
-    max_turns: int = Field(default=20, ge=10, le=100)
+    agent_count: int = Field(default=80, ge=10, le=1000)
+    max_turns: int = Field(default=12, ge=10, le=100)
 
     @field_validator("price_points", mode="before")
     @classmethod

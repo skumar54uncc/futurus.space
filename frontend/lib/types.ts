@@ -202,3 +202,32 @@ export interface WebSocketMessage {
   events?: LiveEvent[];
   report_id?: string;
 }
+
+export interface ScoreBreakdownEntry {
+  score: number;
+  weight: number;
+  source: string;
+}
+
+export interface PublishedIdea {
+  id: string;
+  simulation_id: string;
+  user_name: string;
+  user_avatar_url: string | null;
+  title: string;
+  description: string;
+  category: string;
+  score_market_demand: number;
+  score_retention: number;
+  score_virality: number;
+  score_feasibility: number;
+  overall_rating: number;
+  score_breakdown: Record<string, ScoreBreakdownEntry>;
+  agent_thinking?: string[];
+  created_at: string;
+}
+
+export interface PublishedIdeaList {
+  ideas: PublishedIdea[];
+  total: number;
+}

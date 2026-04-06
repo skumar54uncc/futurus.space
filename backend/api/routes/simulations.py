@@ -31,6 +31,17 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
 
 
+def clamp_simulation_params(params: dict[str, int], limits: dict[str, int]) -> tuple[int, int]:
+    """Clamp requested run size against platform limits and minimum safe bounds."""
+    requested_agents = int(params.get("num_agents", 0))
+    requested_turns = int(params.get("num_turns", 0))
+    min_agents = 10
+    min_turns = 10
+    clamped_agents = max(min_agents, min(requested_agents, int(limits["agents"])))
+    clamped_turns = max(min_turns, min(requested_turns, int(limits["turns"])))
+    return clamped_agents, clamped_turns
+
+
 def _run_inline_worker_safe(simulation_id: str) -> None:
     try:
         run_simulation_inline(simulation_id)
@@ -124,8 +135,10 @@ async def create_simulation(
 
     await check_and_deduct_credit(current_user, db)
     limits = settings.simulation_limits
-    effective_agents = min(payload.agent_count, limits["agents"])
-    effective_turns = min(payload.max_turns, limits["turns"])
+    effective_agents, effective_turns = clamp_simulation_params(
+        {"num_agents": payload.agent_count, "num_turns": payload.max_turns},
+        limits,
+    )
     personas_data = [p.model_dump() for p in payload.personas] if payload.personas else []
     if len(personas_data) > effective_agents:
         personas_data = personas_data[:effective_agents]

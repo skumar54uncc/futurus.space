@@ -8,6 +8,8 @@ const isPublicRoute = createRouteMatcher([
   "/terms(.*)",
   "/contact(.*)",
   "/api/contact(.*)",
+  // Public ideas dashboard
+  "/ideas(.*)",
   // SEO / crawlers — must never hit auth().protect()
   "/robots.txt",
   "/sitemap.xml",

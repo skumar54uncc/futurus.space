@@ -19,7 +19,7 @@ async def get_me(
     from services.credit_service import PLAN_DAILY_LIMITS
 
     data = UserResponse.model_validate(current_user)
-    data.daily_limit = PLAN_DAILY_LIMITS.get(current_user.plan_tier, 1)
+    data.daily_limit = PLAN_DAILY_LIMITS.get(current_user.plan_tier, 2)
     return data
 
 

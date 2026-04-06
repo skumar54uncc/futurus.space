@@ -43,7 +43,7 @@ function StepCard({ step, index }: { step: (typeof steps)[0]; index: number }) {
       {/* Large faded step number */}
       <div
         className="absolute top-6 right-6 font-mono text-5xl font-bold leading-none select-none pointer-events-none"
-        style={{ color: "rgba(99,102,241,0.07)" }}
+        style={{ color: "rgba(99,102,241,0.14)" }}
         aria-hidden
       >
         {step.num}
@@ -75,8 +75,8 @@ export function HowItWorks() {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] text-[11px] text-slate-500 uppercase tracking-widest mb-6">
             How it works
           </div>
-          <h2 className="text-3xl sm:text-4xl font-serif italic text-white mb-4">Three steps to certainty</h2>
-          <p className="text-slate-500 max-w-sm mx-auto text-sm leading-relaxed">
+          <h2 className="text-h2 font-serif italic text-white mb-4">Three steps to certainty</h2>
+          <p className="text-slate-500 max-w-sm mx-auto text-base leading-relaxed">
             From raw idea to detailed market forecast — in minutes, not months.
           </p>
         </div>

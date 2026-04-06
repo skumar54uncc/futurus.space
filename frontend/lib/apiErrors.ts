@@ -49,7 +49,7 @@ export function parseSimulationLaunchError(err: unknown): LaunchErrorResult {
   const lim = parseDailyLimitFromError(err);
   if (lim) {
     const when = formatResetsAt(lim.resets_at);
-    const suffix = when ? ` Your limit resets around ${when}.` : "";
+    const suffix = when ? ` Your credits reset around ${when}.` : "";
     return {
       kind: "daily_limit",
       title: "Daily simulation limit reached",

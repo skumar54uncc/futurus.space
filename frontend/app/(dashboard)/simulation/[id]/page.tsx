@@ -24,6 +24,8 @@ const MAY_STILL_BE_ACTIVE = new Set([
   "generating_report",
 ]);
 
+const STATUS_MESSAGE_HOLD_MS = 2200;
+
 export default function SimulationPage() {
   const params = useParams();
   const router = useRouter();
@@ -42,6 +44,7 @@ export default function SimulationPage() {
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   const failedDialogDismissed = useRef(false);
   const redirected = useRef(false);
+  const statusHoldUntil = useRef(0);
 
   const { simulation, loading, error, refresh } = useSimulation(simulationId, { pollMs: 2000 });
 
@@ -55,7 +58,10 @@ export default function SimulationPage() {
       const msg = data as WebSocketMessage;
       if (msg.type === "progress") {
         setProgress((p) => Math.max(p, Math.max(0, msg.progress ?? 0)));
-        if (msg.message) setStatusMessage(msg.message);
+        if (msg.message) {
+          statusHoldUntil.current = Date.now() + STATUS_MESSAGE_HOLD_MS;
+          setStatusMessage(msg.message);
+        }
         if (msg.progress === 100 && msg.report_id) {
           if (!redirected.current) {
             redirected.current = true;
@@ -69,7 +75,13 @@ export default function SimulationPage() {
       if (msg.type === "turn") {
         setCurrentTurn((t) => Math.max(t, msg.turn || 0));
         setAgentsActive((a) => Math.max(a, msg.agents_active || 0));
-        if (msg.max_turns) setMaxTurns(msg.max_turns);
+        if (msg.max_turns) {
+          setMaxTurns(msg.max_turns);
+          if (msg.turn) {
+            statusHoldUntil.current = Date.now() + 1400;
+            setStatusMessage(`Running simulation: turn ${msg.turn} of ${msg.max_turns}.`);
+          }
+        }
         if (msg.agent_count) setAgentTarget(msg.agent_count);
         if (msg.progress !== undefined) {
           setProgress((p) => Math.max(p, Math.max(0, msg.progress ?? 0)));
@@ -125,7 +137,9 @@ export default function SimulationPage() {
 
     const ui = simulationUiFromStatus(simulation);
     setProgress((p) => Math.max(p, ui.progress));
-    setStatusMessage(ui.message);
+    if (Date.now() >= statusHoldUntil.current) {
+      setStatusMessage(ui.message);
+    }
 
     if (simulation.status === "completed" && !redirected.current) {
       redirected.current = true;
@@ -135,6 +149,9 @@ export default function SimulationPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const isActive = !simulation?.status || MAY_STILL_BE_ACTIVE.has(simulation.status);
+    const pollMs = wsConnected ? (isActive ? 4500 : 12000) : isActive ? 1500 : 6000;
+
     const loadEvents = async () => {
       try {
         const { data } = await api.get<LiveEvent[]>(`/api/simulations/${simulationId}/events`, {
@@ -146,12 +163,12 @@ export default function SimulationPage() {
       }
     };
     loadEvents();
-    const id = window.setInterval(loadEvents, 1200);
+    const id = window.setInterval(loadEvents, pollMs);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [simulationId]);
+  }, [simulationId, wsConnected, simulation?.status]);
 
   const displayMaxTurns = maxTurns || simulation?.max_turns || 0;
   const displayAgentTarget = agentTarget || simulation?.agent_count || 0;
@@ -164,8 +181,8 @@ export default function SimulationPage() {
       setNotifyEnabled(data.notify_on_complete);
       toast.success(
         data.notify_on_complete
-          ? "When this run finishes, we'll email your account—if the API has SES or SMTP (e.g. Gmail) configured."
-          : "Email notification removed."
+            ? "We will email you when the report is ready."
+            : "Email notifications turned off."
       );
     } catch {
       toast.error("Couldn't update notification preference");

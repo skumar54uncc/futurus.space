@@ -196,7 +196,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ADMIN_EMAIL", "FUTURUS_ADMIN_EMAIL"),
     )
 
-    max_cost_per_simulation_usd: float = 15.00
+    max_cost_per_simulation_usd: float = 3.00
     backend_url: str = "http://localhost:8000"
 
     # Comma-separated extra CORS origins for production (e.g. https://myapp.vercel.app)
@@ -224,7 +224,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FUTURUS_IDEA_ANALYSIS_READ_TIMEOUT"),
     )
     idea_analysis_max_provider_attempts: int = Field(
-        default=2,
+        default=4,
         validation_alias=AliasChoices("FUTURUS_IDEA_ANALYSIS_MAX_PROVIDERS"),
     )
 
@@ -235,6 +235,21 @@ class Settings(BaseSettings):
     persona_generation_llm_read_timeout_seconds: float = Field(
         default=24.0,
         validation_alias=AliasChoices("FUTURUS_PERSONA_READ_TIMEOUT"),
+    )
+
+    # Per-turn engine timeout (seconds) before skipping a stuck turn.
+    mirofish_step_timeout_seconds: float = Field(
+        default=120.0,
+        validation_alias=AliasChoices("MIROFISH_STEP_TIMEOUT", "FUTURUS_MIROFISH_STEP_TIMEOUT"),
+    )
+
+    # Commit simulation turn updates every N turns to reduce DB write pressure.
+    simulation_turn_commit_interval: int = Field(
+        default=2,
+        validation_alias=AliasChoices(
+            "FUTURUS_SIM_TURN_COMMIT_INTERVAL",
+            "SIM_TURN_COMMIT_INTERVAL",
+        ),
     )
 
     # If True, run simulations in a daemon thread (no Celery/Redis worker required).
@@ -251,7 +266,7 @@ class Settings(BaseSettings):
         default_factory=lambda: {
             "agents": 1000,
             "turns": 40,
-            "ensemble": 5,
+            "ensemble": 1,
         }
     )
 

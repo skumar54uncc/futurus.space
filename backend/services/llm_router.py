@@ -389,14 +389,12 @@ async def _call_provider(
     json_mode: bool,
     read_timeout: float = LLM_DEFAULT_READ_TIMEOUT,
 ) -> str:
-    key = provider.next_key()
-    if key is None:
-        raise AllProvidersExhausted(f"{provider.name}: no available keys")
-
-    key.record(provider.rpm_limit, provider.rpd_limit)
-
-    # DigitalOcean serverless inference: prefer max_completion_tokens; max_tokens is deprecated there.
-    # Groq / OpenRouter / Gemini OpenAI-compat: use max_tokens.
+    timeout = httpx.Timeout(
+        connect=HTTPX_CONNECT,
+        read=read_timeout,
+        write=HTTPX_WRITE,
+        pool=HTTPX_POOL,
+    )
     body: dict = {
         "model": provider.model,
         "messages": messages,
@@ -406,78 +404,86 @@ async def _call_provider(
         body["max_completion_tokens"] = max_tokens
     else:
         body["max_tokens"] = max_tokens
-
     if json_mode and _use_openai_json_response_format(provider):
         body["response_format"] = {"type": "json_object"}
 
-    headers = {
-        "Authorization": f"Bearer {key.value}",
-        "Content-Type": "application/json",
-    }
+    candidate_keys = [
+        k for k in provider.api_keys if k.can_use(provider.rpm_limit, provider.rpd_limit)
+    ]
+    if not candidate_keys:
+        raise AllProvidersExhausted(f"{provider.name}: no available keys")
 
-    timeout = httpx.Timeout(
-        connect=HTTPX_CONNECT,
-        read=read_timeout,
-        write=HTTPX_WRITE,
-        pool=HTTPX_POOL,
-    )
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as http:
-            resp = await http.post(
-                f"{provider.base_url}/chat/completions",
-                json=body,
-                headers=headers,
-            )
+    last_failure: str | None = None
+    for key in candidate_keys:
+        key.record(provider.rpm_limit, provider.rpd_limit)
+        headers = {
+            "Authorization": f"Bearer {key.value}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as http:
+                resp = await http.post(
+                    f"{provider.base_url}/chat/completions",
+                    json=body,
+                    headers=headers,
+                )
 
-        if resp.status_code == 429:
-            retry_after = float(resp.headers.get("retry-after", "60"))
-            key.cool_down(retry_after)
-            logger.warning(
-                "llm_rate_limited",
+            if resp.status_code == 429:
+                retry_after = float(resp.headers.get("retry-after", "60"))
+                key.cool_down(retry_after)
+                logger.warning(
+                    "llm_rate_limited",
+                    provider=provider.name,
+                    key=key.label,
+                    retry_after=retry_after,
+                )
+                last_failure = f"{provider.name} {key.label} rate limited"
+                continue
+
+            if not resp.is_success:
+                logger.warning(
+                    "llm_provider_http_error",
+                    provider=provider.name,
+                    key=key.label,
+                    status=resp.status_code,
+                    body=resp.text[:400],
+                )
+                last_failure = f"{provider.name} {key.label} HTTP {resp.status_code}: {resp.text[:120]}"
+                # Cool down invalid/forbidden keys so the next request can use a different key first.
+                if resp.status_code in (401, 403):
+                    key.cool_down(300.0)
+                continue
+
+            data = resp.json()
+            content = _extract_assistant_text(data)
+            if content is None:
+                logger.warning(
+                    "llm_empty_content_shape",
+                    provider=provider.name,
+                    key=key.label,
+                    sample=str(data)[:500],
+                )
+                last_failure = f"{provider.name} {key.label}: empty response content"
+                continue
+
+            logger.info(
+                "llm_call_ok",
                 provider=provider.name,
+                model=provider.model,
                 key=key.label,
-                retry_after=retry_after,
             )
-            raise AllProvidersExhausted(f"{provider.name} {key.label} rate limited")
+            return content
 
-        if not resp.is_success:
-            logger.warning(
-                "llm_provider_http_error",
-                provider=provider.name,
-                key=key.label,
-                status=resp.status_code,
-                body=resp.text[:400],
-            )
-            raise AllProvidersExhausted(f"{provider.name} HTTP {resp.status_code}: {resp.text[:200]}")
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            logger.warning("llm_provider_error", provider=provider.name, key=key.label, error=str(exc))
+            last_failure = f"{provider.name} {key.label} connection error"
+            continue
+        except Exception as exc:
+            logger.warning("llm_provider_unexpected", provider=provider.name, key=key.label, error=str(exc))
+            last_failure = f"{provider.name} {key.label} unexpected: {exc}"
+            continue
 
-        data = resp.json()
-        content = _extract_assistant_text(data)
-        if content is None:
-            logger.warning(
-                "llm_empty_content_shape",
-                provider=provider.name,
-                key=key.label,
-                sample=str(data)[:500],
-            )
-            raise AllProvidersExhausted(
-                f"{provider.name}: empty or missing message.content in response"
-            )
-        logger.info(
-            "llm_call_ok",
-            provider=provider.name,
-            model=provider.model,
-            key=key.label,
-        )
-        return content
-
-    except AllProvidersExhausted:
-        raise
-    except (httpx.TimeoutException, httpx.ConnectError) as exc:
-        logger.warning("llm_provider_error", provider=provider.name, error=str(exc))
-        raise AllProvidersExhausted(f"{provider.name} connection error") from exc
-    except Exception as exc:
-        logger.warning("llm_provider_unexpected", provider=provider.name, error=str(exc))
-        raise AllProvidersExhausted(f"{provider.name} unexpected: {exc}") from exc
+    raise AllProvidersExhausted(last_failure or f"{provider.name}: all keys exhausted")
 
 
 # ── Public call_llm ───────────────────────────────────────────────────────────

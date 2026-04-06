@@ -16,6 +16,7 @@ import { ReportChat } from "@/components/report/ReportChat";
 import { ExportActions } from "@/components/report/ExportActions";
 import { ViabilitySummaryCard } from "@/components/report/ViabilitySummaryCard";
 import { CitationsList } from "@/components/report/CitationsList";
+import { PublishIdeaButton } from "@/components/report/PublishIdeaButton";
 import { ReportSkeleton, ReportChartSkeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,7 @@ export default function ReportPage() {
       <PivotSuggestions suggestions={report.pivot_suggestions} insights={report.key_insights} />
       <ExportActions report={report} />
       <CitationsList citations={report.citations ?? []} />
+      <PublishIdeaButton simulationId={simulationId} />
       <ReportChat simulationId={simulationId} />
     </ReportShell>
   );

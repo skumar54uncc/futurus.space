@@ -11,7 +11,7 @@ class UserResponse(BaseModel):
     plan_tier: str
     credit_balance: int
     simulations_this_month: int
-    daily_limit: int = 1
+    daily_limit: int = 2
     billing_period_start: datetime
     subscription_status: str
     onboarding_completed: bool

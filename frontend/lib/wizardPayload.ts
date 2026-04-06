@@ -1,5 +1,8 @@
 import type { GeneratedFields } from "@/lib/types";
-import { OPEN_ACCESS_AGENT_CAP, OPEN_ACCESS_TURN_CAP } from "@/lib/simulationLimits";
+import {
+  DEFAULT_LAUNCH_AGENT_COUNT,
+  DEFAULT_LAUNCH_TURN_COUNT,
+} from "@/lib/simulationLimits";
 
 const DEFAULT_ASSUMPTIONS: GeneratedFields["key_assumptions"] = [
   { variable: "churn_rate_monthly", value: "5%" },
@@ -90,7 +93,10 @@ export function competitorDisplayName(c: GeneratedFields["competitors"][number] 
 }
 
 /** Body for POST /api/simulations/ — only schema fields, no currency or LLM extras. */
-export function buildSimulationCreatePayload(fields: GeneratedFields) {
+export function buildSimulationCreatePayload(
+  fields: GeneratedFields,
+  scale?: { agent_count: number; max_turns: number }
+) {
   return {
     business_name: fields.business_name.trim(),
     idea_description: fields.idea_description.trim(),
@@ -117,8 +123,8 @@ export function buildSimulationCreatePayload(fields: GeneratedFields) {
     })),
     vertical: fields.vertical.trim(),
     personas: [],
-    agent_count: OPEN_ACCESS_AGENT_CAP,
-    max_turns: OPEN_ACCESS_TURN_CAP,
+    agent_count: scale?.agent_count ?? DEFAULT_LAUNCH_AGENT_COUNT,
+    max_turns: scale?.max_turns ?? DEFAULT_LAUNCH_TURN_COUNT,
   };
 }
 

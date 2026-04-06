@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "react-hot-toast";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { getFuturusClerkAppearance } from "@/lib/clerk-appearance";
+import { AnalyticsGate } from "@/components/analytics/AnalyticsGate";
+import { CookieConsentBanner } from "@/components/analytics/CookieConsentBanner";
 import "./globals.css";
 
 const clerkSignInFallback =
@@ -11,6 +11,15 @@ const clerkSignInFallback =
 const clerkSignUpFallback =
   process.env.NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL || "/new";
 const vercelAnalyticsEnabled = process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === "true";
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
+const googleSiteVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || "";
+const bingSiteVerification = process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION || "";
+
+const isProductionDeploy = process.env.VERCEL_ENV === "production";
+
+if (isProductionDeploy && clerkPublishableKey.startsWith("pk_test_")) {
+  throw new Error("Invalid Clerk configuration: set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY to a live key (pk_live_) in production.");
+}
 
 export const metadata: Metadata = {
   title: "Futurus — See what is about to be",
@@ -28,16 +37,38 @@ export const metadata: Metadata = {
     title: "Futurus — See what is about to be",
     description:
       "Simulate any idea through 1,000 AI minds. Know the future before you commit.",
-    url: "https://futurus.dev",
+    url: "https://www.futurus.dev",
     siteName: "Futurus",
     type: "website",
+    images: [
+      {
+        url: "/brand/futurus-logo-dark.png",
+        width: 1200,
+        height: 630,
+        alt: "Futurus",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Futurus — See what is about to be",
     description: "Simulate any idea. See the future.",
+    images: ["/brand/futurus-logo-dark.png"],
   },
-  metadataBase: new URL("https://futurus.dev"),
+  metadataBase: new URL("https://www.futurus.dev"),
+  alternates: {
+    canonical: "https://www.futurus.dev",
+  },
+  verification: {
+    google: googleSiteVerification || undefined,
+    ...(bingSiteVerification
+      ? {
+          other: {
+            "msvalidate.01": bingSiteVerification,
+          },
+        }
+      : {}),
+  },
 };
 
 export const viewport: Viewport = {
@@ -87,12 +118,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               },
             }}
           />
-          {vercelAnalyticsEnabled ? (
-            <>
-              <Analytics />
-              <SpeedInsights />
-            </>
-          ) : null}
+          {vercelAnalyticsEnabled ? <AnalyticsGate /> : null}
+          <CookieConsentBanner />
         </body>
       </html>
     </ClerkProvider>

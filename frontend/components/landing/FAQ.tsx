@@ -38,7 +38,11 @@ export function FAQ() {
             value={`faq-${i}`}
             className="bg-[--bg-surface] border border-[--border-subtle] rounded-[12px] overflow-hidden"
           >
-            <Accordion.Trigger className="w-full flex items-center justify-between px-5 py-4 text-sm font-medium text-[--text-primary] text-left hover:bg-[--bg-glass-hover] transition-colors group">
+            <Accordion.Trigger
+              id={`faq-trigger-${i}`}
+              aria-controls={`faq-panel-${i}`}
+              className="w-full flex items-center justify-between px-5 py-4 text-sm font-medium text-[--text-primary] text-left hover:bg-[--bg-glass-hover] transition-colors group"
+            >
               {q}
               <ChevronDown
                 size={16}
@@ -46,7 +50,11 @@ export function FAQ() {
                 aria-hidden
               />
             </Accordion.Trigger>
-            <Accordion.Content className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
+            <Accordion.Content
+              id={`faq-panel-${i}`}
+              aria-labelledby={`faq-trigger-${i}`}
+              className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up"
+            >
               <p className="px-5 pb-4 text-sm text-[--text-secondary] leading-relaxed">{a}</p>
             </Accordion.Content>
           </Accordion.Item>

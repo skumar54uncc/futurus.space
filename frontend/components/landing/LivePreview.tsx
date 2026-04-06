@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { FreeTierLimitsNotice } from "@/components/landing/FreeTierLimitsNotice";
 import { OPEN_ACCESS_AGENT_CAP, OPEN_ACCESS_TURN_CAP } from "@/lib/simulationLimits";
 
 const events = [
@@ -26,8 +25,10 @@ const typeColors: Record<string, string> = {
 export function LivePreview() {
   const [visibleCount, setVisibleCount] = useState(0);
   const [progress, setProgress] = useState(33);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     const interval = setInterval(() => {
       setVisibleCount((c) => {
         if (c >= events.length) return 0;
@@ -44,14 +45,20 @@ export function LivePreview() {
   const visibleEvents = events.slice(0, visibleCount);
 
   return (
-    <section className="py-24 relative">
+    <section id="live-simulation" aria-label="Live simulation" className="py-24 relative">
       <div className="max-w-3xl mx-auto px-4">
         <h2 className="text-3xl font-serif italic text-center text-white mb-4">
           Watch ideas come alive
         </h2>
-        <p className="text-center text-slate-500 mb-8 max-w-lg mx-auto">
-          Real-time simulation of AI agents reacting to an idea — up to {OPEN_ACCESS_AGENT_CAP.toLocaleString()} agents and{" "}
-          {OPEN_ACCESS_TURN_CAP} turns per run on this deployment.
+        <p className="text-center text-slate-300 mb-8 max-w-lg mx-auto">
+          {isMounted ? (
+            <>
+              Real-time simulation of AI agents reacting to an idea - up to {OPEN_ACCESS_AGENT_CAP.toLocaleString("en-US")} agents and{" "}
+              {OPEN_ACCESS_TURN_CAP} turns per run on this deployment.
+            </>
+          ) : (
+            <>Real-time simulation of AI agents reacting to an idea.</>
+          )}
         </p>
 
         <div className="glass rounded-2xl overflow-hidden">
@@ -61,7 +68,7 @@ export function LivePreview() {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-sm text-slate-300 font-medium">Live simulation</span>
             </div>
-            <div className="flex items-center gap-4 text-xs text-slate-500 font-mono">
+            <div className="flex items-center gap-4 text-xs text-slate-300 font-mono">
               <span>612 agents active</span>
               <span>Turn {events[Math.min(visibleCount, events.length - 1)]?.turn || 12} of 40</span>
             </div>
@@ -83,12 +90,12 @@ export function LivePreview() {
                 className="flex gap-3 animate-[fadeIn_0.5s_ease-out]"
                 style={{ opacity: i === visibleEvents.length - 1 ? 0.9 : 0.6 }}
               >
-                <span className="text-slate-600 shrink-0">Turn {e.turn}</span>
-                <span className="text-slate-500 shrink-0">·</span>
-                <span className="text-slate-400 shrink-0">{e.agent}</span>
-                <span className="text-slate-500 shrink-0">·</span>
+                <span className="text-slate-400 shrink-0">Turn {e.turn}</span>
+                <span className="text-slate-300 shrink-0">·</span>
+                <span className="text-slate-300 shrink-0">{e.agent}</span>
+                <span className="text-slate-300 shrink-0">·</span>
                 <span className={`${typeColors[e.type]} capitalize shrink-0`}>{e.type}</span>
-                <span className="text-slate-600">&mdash; &ldquo;{e.text}&rdquo;</span>
+                <span className="text-slate-300">&mdash; &ldquo;{e.text}&rdquo;</span>
               </div>
             ))}
             {visibleCount > 0 && (
@@ -97,9 +104,6 @@ export function LivePreview() {
           </div>
         </div>
 
-        <div className="mt-8 max-w-2xl mx-auto">
-          <FreeTierLimitsNotice />
-        </div>
       </div>
     </section>
   );

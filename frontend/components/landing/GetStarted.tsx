@@ -26,13 +26,13 @@ export function GetStarted() {
     <section id="get-started" className="py-24 relative scroll-mt-24">
       <div className="max-w-4xl mx-auto px-4">
         <div className="text-center mb-14">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] text-[11px] text-slate-500 uppercase tracking-widest mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/[0.08] text-[11px] text-slate-300 uppercase tracking-widest mb-6">
             Get started
           </div>
           <h2 className="text-3xl sm:text-4xl font-serif italic text-white mb-4">
             Ready to see what happens next?
           </h2>
-          <p className="text-slate-500 text-sm max-w-sm mx-auto leading-relaxed">
+          <p className="text-slate-300 text-sm max-w-sm mx-auto leading-relaxed">
             Free to use. No payment. Run your first simulation in under a minute.
           </p>
         </div>
@@ -47,17 +47,17 @@ export function GetStarted() {
                 </div>
                 <div>
                   <div className="text-sm font-medium text-white mb-1">{title}</div>
-                  <p className="text-xs text-slate-500 leading-relaxed">{body}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">{body}</p>
                 </div>
               </div>
             ))}
           </div>
 
           {/* CTA card */}
-          <div id="pricing" className="glass rounded-2xl p-8 scroll-mt-24">
+          <div id="free-access" className="glass rounded-2xl p-8 scroll-mt-24" aria-label="Free access">
             <div className="mb-6">
               <div className="text-sm font-medium text-white mb-1">Free access</div>
-              <div className="text-xs text-slate-500 leading-relaxed">
+              <div className="text-xs text-slate-300 leading-relaxed">
                 No tiers, no paywalls. Limits exist while this project runs on personal API keys.
               </div>
             </div>
@@ -69,7 +69,7 @@ export function GetStarted() {
                 "Full report on every completed run",
                 "Email notification when done",
               ].map((item) => (
-                <li key={item} className="flex items-center gap-2.5 text-sm text-slate-400">
+                <li key={item} className="flex items-center gap-2.5 text-sm text-slate-300">
                   <Check className="w-4 h-4 text-indigo-400 shrink-0" />
                   {item}
                 </li>

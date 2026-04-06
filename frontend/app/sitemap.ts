@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE = "https://futurus.dev";
+const SITE = "https://www.futurus.dev";
 
 /**
  * Public routes only (no auth-gated dashboard/simulation URLs).
@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     { url: SITE, lastModified: now, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE}/ideas`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE}/contact`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.4 },
     { url: `${SITE}/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.4 },

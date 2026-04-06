@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Logo } from "@/components/ui/Logo";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 function StarField() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -11,6 +10,7 @@ function StarField() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -40,7 +40,9 @@ function StarField() {
       }
       frame = requestAnimationFrame(draw);
     };
-    frame = requestAnimationFrame(draw);
+    if (!reducedMotion) {
+      frame = requestAnimationFrame(draw);
+    }
 
     return () => {
       cancelAnimationFrame(frame);
@@ -48,27 +50,39 @@ function StarField() {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="absolute inset-0 z-0" />;
+  return <canvas ref={canvasRef} className="absolute inset-0 z-0" aria-hidden="true" />;
 }
 
 export function Hero() {
+  const stats = useMemo(
+    () => [
+      ["1,000", "AI agents per run"],
+      ["40", "simulation turns"],
+      ["6", "report sections"],
+      ["16", "ideas published"],
+    ],
+    []
+  );
+
   return (
-    <section className="relative min-h-dvh flex items-center justify-center overflow-hidden pt-24">
+    <section id="hero" aria-label="Hero" className="relative min-h-dvh flex items-center justify-center overflow-hidden pt-24">
       <StarField />
 
       {/* Concentric rings */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="absolute rounded-full border border-indigo-500/10 animate-ring"
-            style={{
-              width: `${200 + i * 200}px`,
-              height: `${200 + i * 200}px`,
-              animationDelay: `${i * 1.3}s`,
-            }}
-          />
-        ))}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute inset-0 flex items-center justify-center">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="absolute rounded-full border border-indigo-500/10 animate-ring"
+              style={{
+                width: `${200 + i * 200}px`,
+                height: `${200 + i * 200}px`,
+                animationDelay: `${i * 1.3}s`,
+              }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Radial gradient glow behind text */}
@@ -77,22 +91,21 @@ export function Hero() {
       </div>
 
       <div className="relative z-10 text-center max-w-3xl mx-auto px-4">
-        <div className="flex justify-center mb-8">
-          <Logo size="lg" />
-        </div>
-
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-xs text-indigo-300 mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
           Powered by multi-agent AI simulation
         </div>
 
-        <h1 className="text-5xl sm:text-6xl lg:text-7xl leading-[1.1] tracking-tight mb-6">
+        <h1
+          aria-label="See what is about to be."
+          className="text-5xl sm:text-6xl lg:text-7xl leading-[1.1] tracking-tight mb-6"
+        >
           <span className="font-serif italic text-white">See what is</span>
           <br />
           <span className="font-light text-slate-300">about to be.</span>
         </h1>
 
-        <p className="text-lg text-slate-400 max-w-lg mx-auto mb-10 leading-relaxed">
+        <p className="text-lg text-slate-300 max-w-lg mx-auto mb-10 leading-relaxed">
           Write any idea in plain English. Futurus stress-tests it through up to 1,000 AI minds —
           and shows you exactly what will happen before you commit.
         </p>
@@ -106,22 +119,20 @@ export function Hero() {
           </Link>
           <a
             href="#how-it-works"
-            className="px-8 py-3.5 rounded-xl font-medium text-slate-300 border border-white/10 hover:border-indigo-500/40 hover:text-white hover:bg-indigo-500/5 transition-all duration-150 ease-out active:scale-[0.98]"
+            className="px-8 py-3.5 rounded-xl font-medium text-slate-300 border border-white/15 hover:border-indigo-500/40 hover:text-white hover:bg-indigo-500/5 transition-all duration-150 ease-out active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[--bg-void]"
           >
             See how it works
           </a>
         </div>
 
         {/* Social-proof stat strip */}
-        <div className="flex items-center justify-center gap-8 flex-wrap">
-          {[
-            ["1,000", "AI agents per run"],
-            ["40", "simulation turns"],
-            ["6", "report sections"],
-          ].map(([num, label]) => (
-            <div key={label} className="text-center">
-              <div className="text-2xl font-medium text-white/90">{num}</div>
-              <div className="text-xs text-slate-600 uppercase tracking-widest mt-0.5">{label}</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-0 md:divide-x md:divide-white/10 max-w-3xl mx-auto">
+          {stats.map(([num, label]) => (
+            <div key={label} className="text-center md:px-4">
+              <div className="text-3xl sm:text-4xl font-semibold tracking-tight bg-gradient-to-r from-indigo-200 via-indigo-400 to-violet-400 bg-clip-text text-transparent">
+                {num}
+              </div>
+              <div className="text-[11px] text-slate-400 uppercase tracking-widest mt-1">{label}</div>
             </div>
           ))}
         </div>

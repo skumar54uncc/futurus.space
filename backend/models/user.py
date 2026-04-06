@@ -27,7 +27,7 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    credit_balance: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    credit_balance: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     simulations_this_month: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     billing_period_start: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow

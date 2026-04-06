@@ -30,6 +30,7 @@ class MiroFishAdapter:
         self.personas = personas
         self.cost_governor = cost_governor
         self._engine = None
+        self.timeout_count = 0
 
     async def run(self, max_turns: int) -> AsyncGenerator[dict, None]:
         try:
@@ -59,9 +60,11 @@ class MiroFishAdapter:
                 break
 
             try:
+                step_start = asyncio.get_running_loop().time()
                 turn_result = await asyncio.wait_for(
-                    self._engine.step(), timeout=120.0
+                    self._engine.step(), timeout=float(settings.mirofish_step_timeout_seconds)
                 )
+                step_elapsed_ms = round((asyncio.get_running_loop().time() - step_start) * 1000.0, 2)
                 events = self._extract_events(turn_result)
                 self.cost_governor.record_turn_cost(
                     turn_result.get("llm_cost_usd", 0.05)
@@ -73,9 +76,11 @@ class MiroFishAdapter:
                     ),
                     "events": events,
                     "raw": turn_result,
+                    "turn_wall_time_ms": step_elapsed_ms,
                 }
             except asyncio.TimeoutError:
                 logger.warning("turn_timeout", turn=turn)
+                self.timeout_count += 1
                 continue
             except Exception as e:
                 logger.error("turn_error", turn=turn, error=str(e))
@@ -244,6 +249,7 @@ class MiroFishAdapter:
         for turn in range(1, max_turns + 1):
             turn_events = []
             current_adoption_rate = len(adopted_agents) / max(1, total_agents)
+            llm_semaphore = asyncio.Semaphore(80)
 
             # ── Collect prospects that need LLM calls this turn ───────────────
             tier1_prospects = []
@@ -262,9 +268,13 @@ class MiroFishAdapter:
             tier2_decisions: dict[str, dict] = {}
 
             if tier1_prospects:
+                async def _tier1_call(p: dict) -> dict:
+                    async with llm_semaphore:
+                        return await self._llm_prospect_decision(p, turn, current_adoption_rate)
+
                 results = await asyncio.gather(
                     *[
-                        self._llm_prospect_decision(p, turn, current_adoption_rate)
+                        _tier1_call(p)
                         for p in tier1_prospects
                     ],
                     return_exceptions=True,
@@ -274,9 +284,13 @@ class MiroFishAdapter:
                         tier1_decisions[p["name"]] = res
 
             if tier2_llm_prospects:
+                async def _tier2_call(p: dict) -> dict:
+                    async with llm_semaphore:
+                        return await self._llm_prospect_decision(p, turn, current_adoption_rate)
+
                 results = await asyncio.gather(
                     *[
-                        self._llm_prospect_decision(p, turn, current_adoption_rate)
+                        _tier2_call(p)
                         for p in tier2_llm_prospects
                     ],
                     return_exceptions=True,
