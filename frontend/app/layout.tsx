@@ -14,10 +14,11 @@ const vercelAnalyticsEnabled = process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS =
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const googleSiteVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || "";
 const bingSiteVerification = process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION || "";
+const allowTestClerkInProd = process.env.ALLOW_TEST_CLERK_IN_PROD === "true";
 
 const isProductionDeploy = process.env.VERCEL_ENV === "production";
 
-if (isProductionDeploy && clerkPublishableKey.startsWith("pk_test_")) {
+if (isProductionDeploy && !allowTestClerkInProd && clerkPublishableKey.startsWith("pk_test_")) {
   throw new Error("Invalid Clerk configuration: set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY to a live key (pk_live_) in production.");
 }
 
