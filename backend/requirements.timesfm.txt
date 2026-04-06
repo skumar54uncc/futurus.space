@@ -1,0 +1,7 @@
+# Optional heavy dependencies for full TimesFM model inference.
+# Do NOT install these on constrained cloud builders unless you need full model mode.
+# Base app runs with heuristic fallback without this file.
+
+huggingface-hub==0.25.2
+safetensors==0.5.3
+torch==2.10.0

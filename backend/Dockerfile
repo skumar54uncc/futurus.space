@@ -13,6 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Optional (disabled by default): install heavyweight TimesFM deps when full model mode is required.
+# COPY requirements.timesfm.txt .
+# RUN pip install --no-cache-dir -r requirements.timesfm.txt
+
 COPY . .
 
 # App Platform and Railway inject PORT
