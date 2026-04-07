@@ -246,13 +246,13 @@ class Settings(BaseSettings):
 
     # Per-turn engine timeout (seconds) before skipping a stuck turn.
     mirofish_step_timeout_seconds: float = Field(
-        default=120.0,
+        default=45.0,
         validation_alias=AliasChoices("MIROFISH_STEP_TIMEOUT", "FUTURUS_MIROFISH_STEP_TIMEOUT"),
     )
 
     # Commit simulation turn updates every N turns to reduce DB write pressure.
     simulation_turn_commit_interval: int = Field(
-        default=2,
+        default=5,
         validation_alias=AliasChoices(
             "FUTURUS_SIM_TURN_COMMIT_INTERVAL",
             "SIM_TURN_COMMIT_INTERVAL",

@@ -21,10 +21,48 @@ from core.redis import get_upstash_redis_optional
 logger = structlog.get_logger()
 
 # Per-provider HTTP timeouts. Keep total wall time under ~90s so gateways (e.g. DO App Platform ~100s) return JSON, not 504.
-HTTPX_CONNECT = 15.0
-HTTPX_WRITE = 45.0
-HTTPX_POOL = 10.0
-LLM_DEFAULT_READ_TIMEOUT = 55.0
+HTTPX_CONNECT = 5.0
+HTTPX_WRITE = 10.0
+HTTPX_POOL = 5.0
+LLM_DEFAULT_READ_TIMEOUT = 25.0
+
+# ── Shared httpx client (connection pooling) ─────────────────────────────────
+
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """Return a module-level shared httpx client. Created once, reused across all LLM calls."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        try:
+            import h2  # noqa: F401
+            use_http2 = True
+        except ImportError:
+            use_http2 = False
+        logger.info("llm_router_creating_shared_http_client", http2=use_http2)
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=HTTPX_CONNECT,
+                read=LLM_DEFAULT_READ_TIMEOUT,
+                write=HTTPX_WRITE,
+                pool=HTTPX_POOL,
+            ),
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+            ),
+            http2=use_http2,
+        )
+    return _http_client
+
+
+async def cleanup_http_client():
+    """Close the shared httpx client. Call on app/worker shutdown."""
+    global _http_client
+    if _http_client and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
 
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
@@ -389,12 +427,6 @@ async def _call_provider(
     json_mode: bool,
     read_timeout: float = LLM_DEFAULT_READ_TIMEOUT,
 ) -> str:
-    timeout = httpx.Timeout(
-        connect=HTTPX_CONNECT,
-        read=read_timeout,
-        write=HTTPX_WRITE,
-        pool=HTTPX_POOL,
-    )
     body: dict = {
         "model": provider.model,
         "messages": messages,
@@ -413,6 +445,12 @@ async def _call_provider(
     if not candidate_keys:
         raise AllProvidersExhausted(f"{provider.name}: no available keys")
 
+    client = _get_http_client()
+    # Per-call read timeout override (the shared client has a default, but individual calls may differ)
+    call_timeout = httpx.Timeout(
+        connect=HTTPX_CONNECT, read=read_timeout, write=HTTPX_WRITE, pool=HTTPX_POOL
+    )
+
     last_failure: str | None = None
     for key in candidate_keys:
         key.record(provider.rpm_limit, provider.rpd_limit)
@@ -421,12 +459,12 @@ async def _call_provider(
             "Content-Type": "application/json",
         }
         try:
-            async with httpx.AsyncClient(timeout=timeout) as http:
-                resp = await http.post(
-                    f"{provider.base_url}/chat/completions",
-                    json=body,
-                    headers=headers,
-                )
+            resp = await client.post(
+                f"{provider.base_url}/chat/completions",
+                json=body,
+                headers=headers,
+                timeout=call_timeout,
+            )
 
             if resp.status_code == 429:
                 retry_after = float(resp.headers.get("retry-after", "60"))

@@ -8,8 +8,11 @@ This adapter:
 4. Streams results as an async generator
 """
 import json
+import re
 import sys
 import os
+import random
+from collections import defaultdict
 
 sys.path.insert(0, "/mirofish")
 sys.path.insert(0, "/mirofish/backend")
@@ -169,72 +172,114 @@ class MiroFishAdapter:
         return sorted_personas
 
     @staticmethod
-    async def _llm_prospect_decision(
-        agent: dict, turn: int, adoption_rate: float
+    def _parse_distribution(llm_response: str) -> dict:
+        """Safely parse probability distribution from LLM response."""
+        cleaned = re.sub(r'```(?:json)?\s*', '', llm_response).strip().rstrip('`').strip()
+        try:
+            dist = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return {"adopted": 0.25, "deferred": 0.25, "rejected": 0.25, "referred": 0.25}
+        valid_keys = {"adopted", "rejected", "deferred", "referred"}
+        filtered = {k: float(v) for k, v in dist.items() if k in valid_keys and isinstance(v, (int, float))}
+        if not filtered:
+            return {"adopted": 0.25, "deferred": 0.25, "rejected": 0.25, "referred": 0.25}
+        total = sum(filtered.values())
+        if total <= 0:
+            return {"adopted": 0.25, "deferred": 0.25, "rejected": 0.25, "referred": 0.25}
+        return {k: v / total for k, v in filtered.items()}
+
+    @staticmethod
+    async def _llm_archetype_decision(
+        representative: dict, group_size: int, turn: int, adoption_rate: float, tier: int
     ) -> dict:
         """
-        LLM-powered decision for a Tier 1/2 prospect agent.
-        Always falls back to crowd_agent_decision() — never raises.
+        LLM-powered decision for an archetype (segment group).
+        Returns a probability distribution over actions for all agents in this archetype.
+        Falls back to uniform distribution on any error.
         """
         from services.llm_router import (
             call_llm,
-            crowd_agent_decision,
             CrowdAgentSkip,
             AllProvidersExhausted,
         )
 
-        budget_sens = agent.get("budget_sensitivity", 0.5)
-        price_sens = (
-            "high" if budget_sens > 0.65 else ("low" if budget_sens < 0.35 else "medium")
-        )
-
         prompt = (
-            f"Simulate customer {agent['name']} ({agent['segment']}) at turn {turn}/40. "
-            f"Market adoption so far: {adoption_rate:.0%}. "
-            f"Motivation: {agent.get('main_motivation', 'N/A')}. "
-            f"Objection: {agent.get('main_objection', 'N/A')}. "
-            f"Adopts when: {agent.get('trigger_to_adopt', 'N/A')}. "
-            'Reply ONLY with JSON: {"event_type":"adopted|rejected|deferred|referred","description":"<1 sentence>"}'
+            f"You represent an archetype of {group_size} consumers who share these traits.\n"
+            f"Segment: {representative['segment']}. Turn: {turn}/40.\n"
+            f"Market adoption so far: {adoption_rate:.0%}.\n"
+            f"Motivation: {representative.get('main_motivation', 'N/A')}.\n"
+            f"Objection: {representative.get('main_objection', 'N/A')}.\n"
+            f"Adopts when: {representative.get('trigger_to_adopt', 'N/A')}.\n"
+            "Given the current market state, return a JSON probability distribution "
+            "over possible actions. Probabilities must sum to 1.0.\n"
+            'Reply ONLY with JSON: {"adopted": 0.XX, "deferred": 0.XX, "rejected": 0.XX, "referred": 0.XX}'
         )
 
         try:
             content = await call_llm(
                 messages=[{"role": "user", "content": prompt}],
-                agent_tier=agent["_tier"],
+                agent_tier=tier,
                 temperature=0.85,
-                max_tokens=80,
+                max_tokens=300,
                 json_mode=True,
             )
-            data = json.loads(content)
-            event_type = data.get("event_type", "deferred")
-            if event_type not in ("adopted", "rejected", "deferred", "referred"):
-                event_type = "deferred"
-            return {
-                "event_type": event_type,
-                "event_description": str(data.get("description", ""))[:200],
-            }
+            return MiroFishAdapter._parse_distribution(content)
         except (CrowdAgentSkip, AllProvidersExhausted, Exception) as exc:
             if not isinstance(exc, CrowdAgentSkip):
                 logger.warning(
-                    "llm_agent_fallback_to_crowd",
-                    agent=agent["name"],
+                    "llm_archetype_fallback",
+                    segment=representative.get("segment"),
                     error=str(exc)[:120],
                 )
-            result = crowd_agent_decision(
-                segment=agent["segment"],
-                turn=turn,
-                current_adoption_rate=adoption_rate,
-                price_sensitivity=price_sens,
-            )
-            return {
-                "event_type": result["event_type"],
-                "event_description": result["event_description"],
+            return {"adopted": 0.25, "deferred": 0.25, "rejected": 0.25, "referred": 0.25}
+
+    @staticmethod
+    def _apply_distribution(agents: list, distribution: dict) -> dict[str, dict]:
+        """Apply a probability distribution to a group of agents via weighted sampling."""
+        actions = list(distribution.keys())
+        weights = list(distribution.values())
+        decisions: dict[str, dict] = {}
+
+        # Pre-fetch a description bank for each action type
+        _DESCRIPTIONS = {
+            "adopted": [
+                "Signed up after seeing the value proposition.",
+                "The benefits outweighed the initial hesitation.",
+                "Word of mouth was the tipping point.",
+                "The pricing felt right for the value offered.",
+            ],
+            "rejected": [
+                "Not convinced enough at this stage.",
+                "The price point was a dealbreaker.",
+                "Compared with alternatives and chose a competitor.",
+                "Not ready to commit right now.",
+            ],
+            "deferred": [
+                "Interested but not ready to decide yet.",
+                "Waiting for more social proof before committing.",
+                "Put the decision off — too busy right now.",
+                "Bookmarked it to revisit later.",
+            ],
+            "referred": [
+                "Recommended it to colleagues immediately.",
+                "Shared it on their social channels.",
+                "Brought it up in a team meeting.",
+                "Left a positive review and tagged the brand.",
+            ],
+        }
+
+        for agent in agents:
+            chosen = random.choices(actions, weights=weights, k=1)[0]
+            desc_list = _DESCRIPTIONS.get(chosen, _DESCRIPTIONS["deferred"])
+            decisions[agent["name"]] = {
+                "event_type": chosen,
+                "event_description": random.choice(desc_list),
             }
+        return decisions
 
     async def _run_mock_simulation(
         self, max_turns: int
     ) -> AsyncGenerator[dict, None]:
-        import random
         from services.llm_router import crowd_agent_decision
 
         # Assign LLM tiers before the loop
@@ -249,55 +294,57 @@ class MiroFishAdapter:
         for turn in range(1, max_turns + 1):
             turn_events = []
             current_adoption_rate = len(adopted_agents) / max(1, total_agents)
-            llm_semaphore = asyncio.Semaphore(80)
 
-            # ── Collect prospects that need LLM calls this turn ───────────────
-            tier1_prospects = []
-            tier2_llm_prospects = []
+            # ── Collect prospects by archetype (segment) for LLM calls ────────
+            tier1_by_segment: dict[str, list[dict]] = defaultdict(list)
+            tier2_by_segment: dict[str, list[dict]] = defaultdict(list)
             for p in personas:
                 aid = p["name"]
                 if aid in adopted_agents or aid in churned_agents:
                     continue
                 if p["_tier"] == 1:
-                    tier1_prospects.append(p)
+                    tier1_by_segment[p["segment"]].append(p)
                 elif p["_tier"] == 2 and turn % 4 == 0:
-                    tier2_llm_prospects.append(p)
+                    tier2_by_segment[p["segment"]].append(p)
 
-            # ── Fire LLM calls concurrently per tier ──────────────────────────
+            # ── Fire 1 LLM call per archetype (not per agent) ────────────────
             tier1_decisions: dict[str, dict] = {}
             tier2_decisions: dict[str, dict] = {}
+            archetype_calls = 0
 
-            if tier1_prospects:
-                async def _tier1_call(p: dict) -> dict:
-                    async with llm_semaphore:
-                        return await self._llm_prospect_decision(p, turn, current_adoption_rate)
-
-                results = await asyncio.gather(
-                    *[
-                        _tier1_call(p)
-                        for p in tier1_prospects
-                    ],
-                    return_exceptions=True,
-                )
-                for p, res in zip(tier1_prospects, results):
-                    if isinstance(res, dict):
-                        tier1_decisions[p["name"]] = res
-
-            if tier2_llm_prospects:
-                async def _tier2_call(p: dict) -> dict:
-                    async with llm_semaphore:
-                        return await self._llm_prospect_decision(p, turn, current_adoption_rate)
+            if tier1_by_segment:
+                async def _t1_archetype_call(seg: str, agents: list[dict]) -> tuple[str, dict]:
+                    dist = await self._llm_archetype_decision(
+                        agents[0], len(agents), turn, current_adoption_rate, tier=1
+                    )
+                    return seg, dist
 
                 results = await asyncio.gather(
-                    *[
-                        _tier2_call(p)
-                        for p in tier2_llm_prospects
-                    ],
+                    *[_t1_archetype_call(seg, agents) for seg, agents in tier1_by_segment.items()],
                     return_exceptions=True,
                 )
-                for p, res in zip(tier2_llm_prospects, results):
-                    if isinstance(res, dict):
-                        tier2_decisions[p["name"]] = res
+                for res in results:
+                    if isinstance(res, tuple):
+                        seg, dist = res
+                        tier1_decisions.update(self._apply_distribution(tier1_by_segment[seg], dist))
+                        archetype_calls += 1
+
+            if tier2_by_segment:
+                async def _t2_archetype_call(seg: str, agents: list[dict]) -> tuple[str, dict]:
+                    dist = await self._llm_archetype_decision(
+                        agents[0], len(agents), turn, current_adoption_rate, tier=2
+                    )
+                    return seg, dist
+
+                results = await asyncio.gather(
+                    *[_t2_archetype_call(seg, agents) for seg, agents in tier2_by_segment.items()],
+                    return_exceptions=True,
+                )
+                for res in results:
+                    if isinstance(res, tuple):
+                        seg, dist = res
+                        tier2_decisions.update(self._apply_distribution(tier2_by_segment[seg], dist))
+                        archetype_calls += 1
 
             # ── Process every agent ───────────────────────────────────────────
             for agent in personas:
@@ -369,10 +416,8 @@ class MiroFishAdapter:
                         "description": decision["event_description"],
                     })
 
-            # Cost: ~$0.001 per Tier 1 call, ~$0.0003 per Tier 2 call
-            self.cost_governor.record_turn_cost(
-                0.001 * len(tier1_prospects) + 0.0003 * len(tier2_llm_prospects)
-            )
+            # Cost per archetype call (not per agent) — ~$0.001 per call
+            self.cost_governor.record_turn_cost(0.001 * archetype_calls)
             yield {
                 "turn": turn,
                 "agents_active": total_agents - len(churned_agents),

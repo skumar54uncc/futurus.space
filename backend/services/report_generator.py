@@ -413,7 +413,7 @@ IMPORTANT:
             max_tokens=4000,
             temperature=0.2,
             json_mode=True,
-            read_timeout=75.0,
+            read_timeout=40.0,
             max_provider_attempts=4,
         )
         coerced = coerce_llm_json_text(content)

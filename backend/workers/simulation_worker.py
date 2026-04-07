@@ -150,63 +150,70 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             adapter = MiroFishAdapter(seed=seed, personas=personas, cost_governor=cost_governor)
             run_started = time.perf_counter()
             turn_wall_times_ms: list[float] = []
-            commit_interval = max(1, int(getattr(settings, "simulation_turn_commit_interval", 2) or 2))
+            commit_interval = max(1, int(getattr(settings, "simulation_turn_commit_interval", 5) or 5))
             pending_turn_writes = 0
 
             events_collected = []
-            async for turn_result in adapter.run(max_turns=sim.max_turns):
-                if not await _simulation_status_is(db, sim.id, SimulationStatus.RUNNING):
+            try:
+                async for turn_result in adapter.run(max_turns=sim.max_turns):
+                    if not await _simulation_status_is(db, sim.id, SimulationStatus.RUNNING):
+                        logger.info(
+                            "simulation_worker_stopping_turn_loop",
+                            simulation_id=simulation_id,
+                        )
+                        return
+
+                    if cost_governor.is_over_limit():
+                        logger.warning("cost_limit_reached", simulation_id=simulation_id)
+                        break
+
+                    turn_events = []
+                    for event_data in turn_result.get("events", []):
+                        event = SimulationEvent(
+                            simulation_id=sim.id,
+                            turn=turn_result["turn"],
+                            agent_name=event_data.get("agent_name", "Unknown"),
+                            agent_segment=event_data.get("segment", "unknown"),
+                            event_type=event_data.get("event_type", "unknown"),
+                            event_description=event_data.get("description", ""),
+                        )
+                        db.add(event)
+                        turn_events.append(event)
+                        events_collected.append(event)
+
+                    sim.current_turn = turn_result["turn"]
+                    sim.agents_active = turn_result.get("agents_active", 0)
+                    sim.actual_cost_usd = cost_governor.total_cost_usd
+                    if isinstance(turn_result.get("turn_wall_time_ms"), (int, float)):
+                        turn_wall_times_ms.append(float(turn_result["turn_wall_time_ms"]))
+                    pending_turn_writes += 1
+                    # Batch commit every N turns to reduce write latency at high scales.
+                    if pending_turn_writes >= commit_interval:
+                        await db.commit()
+                        pending_turn_writes = 0
+
+                    progress_pct = 25 + int((turn_result["turn"] / sim.max_turns) * 55)
+                    _emit_turn_update(
+                        simulation_id,
+                        turn_result,
+                        turn_events,
+                        progress_pct,
+                        max_turns=sim.max_turns,
+                        agent_count=sim.agent_count,
+                    )
                     logger.info(
-                        "simulation_worker_stopping_turn_loop",
+                        "simulation_turn_done",
                         simulation_id=simulation_id,
-                    )
-                    return
-
-                if cost_governor.is_over_limit():
-                    logger.warning("cost_limit_reached", simulation_id=simulation_id)
-                    break
-
-                turn_events = []
-                for event_data in turn_result.get("events", []):
-                    event = SimulationEvent(
-                        simulation_id=sim.id,
                         turn=turn_result["turn"],
-                        agent_name=event_data.get("agent_name", "Unknown"),
-                        agent_segment=event_data.get("segment", "unknown"),
-                        event_type=event_data.get("event_type", "unknown"),
-                        event_description=event_data.get("description", ""),
+                        max_turns=sim.max_turns,
+                        events_persisted=len(turn_events),
                     )
-                    db.add(event)
-                    turn_events.append(event)
-                    events_collected.append(event)
-
-                sim.current_turn = turn_result["turn"]
-                sim.agents_active = turn_result.get("agents_active", 0)
-                sim.actual_cost_usd = cost_governor.total_cost_usd
-                if isinstance(turn_result.get("turn_wall_time_ms"), (int, float)):
-                    turn_wall_times_ms.append(float(turn_result["turn_wall_time_ms"]))
-                pending_turn_writes += 1
-                # Batch commit every N turns to reduce write latency at high scales.
-                if pending_turn_writes >= commit_interval:
+            except Exception:
+                # Safety: commit whatever progress we have before re-raising
+                if pending_turn_writes > 0:
                     await db.commit()
                     pending_turn_writes = 0
-
-                progress_pct = 25 + int((turn_result["turn"] / sim.max_turns) * 55)
-                _emit_turn_update(
-                    simulation_id,
-                    turn_result,
-                    turn_events,
-                    progress_pct,
-                    max_turns=sim.max_turns,
-                    agent_count=sim.agent_count,
-                )
-                logger.info(
-                    "simulation_turn_done",
-                    simulation_id=simulation_id,
-                    turn=turn_result["turn"],
-                    max_turns=sim.max_turns,
-                    events_persisted=len(turn_events),
-                )
+                raise
 
             if pending_turn_writes > 0:
                 await db.commit()
@@ -371,11 +378,13 @@ from celery.signals import worker_shutdown
 
 @worker_shutdown.connect
 def on_worker_shutdown(sender, **kwargs):
-    """Dispose DB connection pool cleanly when the Celery worker stops."""
+    """Dispose DB connection pool and shared httpx client cleanly when the Celery worker stops."""
     import asyncio
     from core.database import engine
+    from services.llm_router import cleanup_http_client
     loop = asyncio.new_event_loop()
     try:
+        loop.run_until_complete(cleanup_http_client())
         loop.run_until_complete(engine.dispose())
     finally:
         loop.close()

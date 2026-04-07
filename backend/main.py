@@ -156,6 +156,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("futurus_shutting_down")
+    from services.llm_router import cleanup_http_client
+    await cleanup_http_client()
     await engine.dispose()
     await close_redis()
     clear_upstash_client_cache()
