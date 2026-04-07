@@ -80,12 +80,25 @@ const verdictStyles: Record<string, { border: string; badge: string; badgeText: 
   },
 };
 
-function verdictBadgeLabel(label: string): string {
+function deriveYesNoSplit(report: Report): { yes: number; no: number } {
+  const m = report.summary_metrics;
+  const adoption = Math.max(0, Math.min(100, m.adoption_rate ?? 0));
+  const retention = Math.max(0, Math.min(100, 100 - (m.churn_rate ?? 0)));
+  const viral = Math.max(0, Math.min(100, (m.viral_coefficient ?? 0) * 100));
+
+  const yes = Math.round(
+    Math.max(5, Math.min(95, adoption * 0.55 + retention * 0.30 + viral * 0.15))
+  );
+  return { yes, no: 100 - yes };
+}
+
+function verdictBadgeLabel(label: string, report: Report): string {
+  const split = deriveYesNoSplit(report);
   const l = label.toLowerCase();
-  if (l === "promising") return "Leaning positive";
-  if (l === "struggling") return "High risk";
-  if (l === "unclear") return "Incomplete analysis";
-  return "Mixed signals";
+  if (l === "promising") return `Leaning yes (${split.yes}% / ${split.no}%)`;
+  if (l === "struggling") return `Leaning no (${split.yes}% / ${split.no}%)`;
+  if (l === "unclear") return `Incomplete analysis (${split.yes}% / ${split.no}%)`;
+  return `Yes ${split.yes}% / No ${split.no}%`;
 }
 
 export function ViabilitySummaryCard({ report }: { report: Report }) {
@@ -111,7 +124,7 @@ export function ViabilitySummaryCard({ report }: { report: Report }) {
             style.badgeText
           )}
         >
-          {verdictBadgeLabel(v.verdict_label)}
+          {verdictBadgeLabel(v.verdict_label, report)}
         </span>
       </div>
       <p className="text-base text-white font-medium leading-snug mb-4">{v.headline}</p>

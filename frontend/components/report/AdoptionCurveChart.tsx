@@ -25,11 +25,24 @@ const tooltipStyle = {
   padding: "10px 14px",
 };
 
+function formatTimeLabel(monthValue?: number): string {
+  if (typeof monthValue !== "number" || Number.isNaN(monthValue)) return "Timeline";
+  if (monthValue < 1) {
+    const week = Math.max(1, Math.round(monthValue * 4));
+    return `Week ${week}`;
+  }
+  const rounded = Math.round(monthValue);
+  if (Math.abs(monthValue - rounded) < 0.05) {
+    return `Month ${rounded}`;
+  }
+  return `Month ${monthValue.toFixed(1)}`;
+}
+
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string; color: string }[]; label?: number }) {
   if (!active || !payload?.length) return null;
   return (
     <div style={tooltipStyle}>
-      <p className="font-medium mb-1.5 text-white">Month {label}</p>
+      <p className="font-medium mb-1.5 text-white">{formatTimeLabel(label)}</p>
       {payload.map((p) => (
         <p key={p.name} style={{ color: p.color }} className="text-xs">
           {p.name}: <strong>{p.value.toLocaleString()}</strong>
@@ -42,7 +55,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 export function AdoptionCurveChart({ data }: Props) {
   if (!data || data.length === 0) return null;
 
-  const peakMonth = data.reduce((max, d) => (d.net > (max?.net ?? 0) ? d : max), data[0]);
+  const peakMonth = data.reduce((max, d) => (d.cumulative > (max?.cumulative ?? 0) ? d : max), data[0]);
   const finalCount = data[data.length - 1]?.cumulative ?? 0;
   const peakCount = Math.max(...data.map((d) => d.cumulative));
 
@@ -52,7 +65,7 @@ export function AdoptionCurveChart({ data }: Props) {
         <div>
           <h2 className="text-xl font-semibold text-[--text-primary]">Customer growth over time</h2>
           <p className="text-sm text-[--text-tertiary] mt-0.5">
-            How your customer base grew — and how many left — across the simulation
+            How your customer base grew and where churn happened over time since launch
           </p>
         </div>
         <div className="flex gap-4 shrink-0">
@@ -93,11 +106,12 @@ export function AdoptionCurveChart({ data }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
           <XAxis
             dataKey="month_equivalent"
-            tickFormatter={(v) => `M${v}`}
+            tickFormatter={(v) => formatTimeLabel(Number(v))}
             tick={{ fontSize: 11, fill: "#64748b" }}
             axisLine={false}
             tickLine={false}
-            label={{ value: "Month", position: "insideBottom", offset: -8, fill: "#64748b", fontSize: 11 }}
+            minTickGap={18}
+            label={{ value: "Time since launch", position: "insideBottom", offset: -8, fill: "#64748b", fontSize: 11 }}
           />
           <YAxis
             tick={{ fontSize: 11, fill: "#64748b" }}

@@ -199,8 +199,13 @@ _CORS_ORIGIN_REGEX = (
     r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     r"|"
     r"^https://[a-zA-Z0-9][a-zA-Z0-9._-]*\.vercel\.app$"
+    r"|"
+    r"^https://([a-zA-Z0-9-]+\.)?futurus\.dev$"
 )
 
+app.add_middleware(CostGuardMiddleware)
+
+# Keep CORS as the outermost middleware so even early errors still include CORS headers.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_prod_origins + _extra + (_dev_origins if settings.environment != "production" else []),
@@ -209,8 +214,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.add_middleware(CostGuardMiddleware)
 
 
 @app.exception_handler(RequestValidationError)

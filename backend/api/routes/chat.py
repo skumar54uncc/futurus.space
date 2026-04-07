@@ -2,7 +2,7 @@ import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from openai import AsyncOpenAI
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,13 +13,22 @@ from core.database import get_db
 from models.simulation import Report, Simulation
 from models.user import User
 from schemas.report import ChatRequest, ChatResponse
+from services.llm_router import AllProvidersExhausted, call_llm
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+logger = structlog.get_logger()
 
-client = AsyncOpenAI(
-    api_key=settings.openai_compatible_llm_key(),
-    base_url=settings.openai_compatible_llm_base(),
-)
+
+def _fallback_chat_response(report: Report) -> str:
+    metrics = report.summary_metrics or {}
+    adoption = metrics.get("adoption_rate", 0)
+    churn = metrics.get("churn_rate", 0)
+    viral = metrics.get("viral_coefficient", 0)
+    return (
+        "I could not reach the AI model right now, but here is a quick read from your simulation data: "
+        f"adoption is about {adoption}%, churn is about {churn}%, and viral coefficient is {viral}. "
+        "If you ask again in a moment, I can provide a deeper segment-by-segment explanation."
+    )
 
 
 @router.post("/{simulation_id}", response_model=ChatResponse)
@@ -93,17 +102,37 @@ Failure Points: {json.dumps(report.failure_timeline)}
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": body.message})
 
-    response = await client.chat.completions.create(
-        model=settings.llm_model_tier1,
-        messages=messages,
-        max_tokens=1500,
-        temperature=0.4,
-    )
+    try:
+        text = await call_llm(
+            messages=messages,
+            agent_tier=1,
+            temperature=0.4,
+            max_tokens=1200,
+            read_timeout=settings.idea_analysis_llm_read_timeout_seconds,
+            max_provider_attempts=settings.idea_analysis_max_provider_attempts,
+        )
+        if isinstance(text, str) and text.strip():
+            return ChatResponse(response=text.strip())
+    except AllProvidersExhausted as exc:
+        logger.warning(
+            "chat_all_providers_exhausted",
+            simulation_id=str(simulation_id),
+            user_id=current_user.id,
+            error=str(exc),
+        )
+        return ChatResponse(response=_fallback_chat_response(report))
+    except Exception as exc:
+        logger.exception(
+            "chat_completion_failed",
+            simulation_id=str(simulation_id),
+            user_id=current_user.id,
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="The analyst service is temporarily unavailable. Please try again in a few seconds.",
+        )
 
-    msg = response.choices[0].message
-    text = getattr(msg, "content", None)
-    if isinstance(text, str) and text.strip():
-        return ChatResponse(response=text.strip())
     raise HTTPException(
         status_code=502,
         detail="The AI returned an empty reply. Try again in a few seconds.",

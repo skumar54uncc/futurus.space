@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Rocket, Check, Loader2 } from "lucide-react";
+import { Rocket, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 interface Props {
   simulationId: string;
+  className?: string;
+  compact?: boolean;
 }
 
-export function PublishIdeaButton({ simulationId }: Props) {
+export function PublishIdeaButton({ simulationId, className, compact = false }: Props) {
   const [published, setPublished] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -65,8 +68,25 @@ export function PublishIdeaButton({ simulationId }: Props) {
   if (published === null) return null;
 
   if (published) {
+    if (compact) {
+      return (
+        <div className={cn("flex items-center gap-2", className)}>
+          <Button
+            variant="outline"
+            size="default"
+            onClick={handleUnpublish}
+            loading={loading}
+            className="border-emerald-500/35 text-emerald-300 hover:text-emerald-200"
+          >
+            <Check size={16} className="mr-1.5" />
+            Published
+          </Button>
+        </div>
+      );
+    }
+
     return (
-      <div className="flex items-center gap-3 mt-6 p-4 rounded-[14px] border border-emerald-500/20 bg-emerald-500/5">
+      <div className={cn("flex items-center gap-3 mt-6 p-4 rounded-[14px] border border-emerald-500/20 bg-emerald-500/5", className)}>
         <Check size={18} className="text-emerald-400 shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-emerald-400">Published to Ideas Dashboard</p>
@@ -88,20 +108,22 @@ export function PublishIdeaButton({ simulationId }: Props) {
   }
 
   return (
-    <div className="mt-6">
+    <div className={cn(compact ? "" : "mt-6", className)}>
       <Button
         onClick={handlePublish}
         loading={loading}
         variant="primary"
         size="lg"
-        className="w-full sm:w-auto"
+        className={compact ? "w-auto" : "w-full sm:w-auto"}
       >
         <Rocket size={16} />
         Publish the Idea
       </Button>
-      <p className="text-xs text-[--text-tertiary] mt-2">
-        We will email you when the report is ready.
-      </p>
+      {!compact ? (
+        <p className="text-xs text-[--text-tertiary] mt-2">
+          We will email you when the report is ready.
+        </p>
+      ) : null}
     </div>
   );
 }

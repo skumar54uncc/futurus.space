@@ -126,9 +126,11 @@ export default function ReportPage() {
       <FailureTimeline events={report.failure_timeline} />
       <RiskMatrix risks={report.risk_matrix} />
       <PivotSuggestions suggestions={report.pivot_suggestions} insights={report.key_insights} />
-      <ExportActions report={report} />
+      <div className="flex flex-wrap items-center gap-3">
+        <ExportActions report={report} />
+        <PublishIdeaButton simulationId={simulationId} compact />
+      </div>
       <CitationsList citations={report.citations ?? []} />
-      <PublishIdeaButton simulationId={simulationId} />
       <ReportChat simulationId={simulationId} />
     </ReportShell>
   );
