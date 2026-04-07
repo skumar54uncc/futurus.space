@@ -147,6 +147,12 @@ async def lifespan(app: FastAPI):
     logger.info("safe_column_migrations_applied")
 
     await _recover_stale_queued_simulations()
+
+    # Warm up remote TimesFM service (HF Space free tier sleeps after ~15 min).
+    # Non-blocking: if it fails, first real forecast will just be slower.
+    from services.timesfm_client import warmup_timesfm
+    await warmup_timesfm()
+
     yield
 
     logger.info("futurus_shutting_down")

@@ -108,7 +108,7 @@ async def generate_report(
     }
     
     # Run unified validation (TimesFM + MIRAI when available)
-    validation = build_comprehensive_validation(
+    validation = await build_comprehensive_validation(
         metrics["adoption_curve"],
         metrics["summary"],
         market_data

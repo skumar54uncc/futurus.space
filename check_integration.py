@@ -90,21 +90,22 @@ def check_dependencies():
 
 def test_validation_pipeline():
     """Test the complete validation pipeline."""
+    import asyncio
     print("\n" + "=" * 70)
     print("  Validation Pipeline Test")
     print("=" * 70)
-    
+
     try:
         from services.validation_orchestrator import build_comprehensive_validation
-        
+
         # Simple test data
         adoption = [
             {"cumulative": 10 * (i + 1), "turn": i + 1} for i in range(10)
         ]
         metrics = {"growth_rate": 0.15}
         market = {"target_market": "SaaS"}
-        
-        result = build_comprehensive_validation(adoption, metrics, market)
+
+        result = asyncio.run(build_comprehensive_validation(adoption, metrics, market))
         
         print(f"[OK] Comprehensive validation works")
         print(f"     Composite Risk: {result.get('composite_risk')}")

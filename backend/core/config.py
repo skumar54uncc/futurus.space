@@ -138,6 +138,13 @@ class Settings(BaseSettings):
     agent_tier2_count: int = 200     # agents that get LLM every 4 turns
     # remaining agents = Tier 3, probabilistic only
 
+    # Remote TimesFM microservice (Hugging Face Space). When set, the backend
+    # delegates model inference over HTTP instead of loading torch locally.
+    timesfm_service_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("TIMESFM_SERVICE_URL", "FUTURUS_TIMESFM_SERVICE_URL"),
+    )
+
     tavily_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("TAVILY_API_KEY"),

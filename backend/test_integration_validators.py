@@ -67,7 +67,7 @@ def test_timesfm_with_sample_curve():
     return result
 
 
-def test_comprehensive_validation():
+async def test_comprehensive_validation():
     """Test unified orchestrator with both validators."""
     adoption_curve = [
         {"cumulative": i * (i // 2 + 1), "adopters": i} for i in range(1, 11)
@@ -93,7 +93,7 @@ def test_comprehensive_validation():
     print("=" * 70)
 
     print("\nRunning comprehensive validation (TimesFM + MIRAI)...")
-    result = build_comprehensive_validation(adoption_curve, summary_metrics, market_data)
+    result = await build_comprehensive_validation(adoption_curve, summary_metrics, market_data)
 
     print("\nOrchestrator Result:")
     print(f"  Composite Risk: {result.get('composite_risk')}")
@@ -106,6 +106,8 @@ def test_comprehensive_validation():
 
 
 if __name__ == "__main__":
+    import asyncio
+
     try:
         result1 = test_timesfm_with_sample_curve()
         print("\n[OK] TimesFM validator test completed")
@@ -115,7 +117,7 @@ if __name__ == "__main__":
         traceback.print_exc()
 
     try:
-        result2 = test_comprehensive_validation()
+        result2 = asyncio.run(test_comprehensive_validation())
         print("\n[OK] Comprehensive validation test completed")
     except Exception as e:
         print(f"\n[FAIL] Comprehensive validation test failed: {e}")
