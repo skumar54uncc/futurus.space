@@ -17,11 +17,11 @@ import { Button } from "@/components/ui/button";
 
 /** Module-level: same order on server and client (keys use href, not labels). */
 const LANDING_NAV_LINKS = [
-  ["How it works", "#how-it-works"],
-  ["Free access", "#free-access"],
+  ["How it works", "/#how-it-works"],
+  ["Free access", "/#free-access"],
   ["Ideas", "/ideas"],
-  ["Get started", "#get-started"],
-  ["FAQ", "#faq"],
+  ["Get started", "/#get-started"],
+  ["FAQ", "/#faq"],
 ] as const;
 
 export function Navbar() {
@@ -34,7 +34,7 @@ export function Navbar() {
     () =>
       navLinksReady
         ? LANDING_NAV_LINKS.map(([label, href]) =>
-            href.startsWith("/") ? (
+            !href.includes("#") ? (
               <Link
                 key={href}
                 href={href}
