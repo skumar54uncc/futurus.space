@@ -60,6 +60,12 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "https://www.futurus.dev",
   },
+  // Explicit allow — avoids ambiguous defaults and makes crawlers ignore stale GSC “noindex” after redeploy.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true },
+  },
   verification: {
     google: googleSiteVerification || undefined,
     ...(bingSiteVerification
