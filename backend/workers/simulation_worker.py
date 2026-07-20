@@ -154,7 +154,6 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             adapter = MiroFishAdapter(seed=seed, personas=personas, cost_governor=cost_governor)
             run_started = time.perf_counter()
             turn_wall_times_ms: list[float] = []
-            commit_interval = max(1, int(getattr(settings, "simulation_turn_commit_interval", 5) or 5))
             pending_turn_writes = 0
 
             events_collected = []
@@ -188,13 +187,14 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
                     sim.current_turn = turn_result["turn"]
                     sim.agents_active = turn_result.get("agents_active", 0)
                     sim.actual_cost_usd = cost_governor.total_cost_usd
+                    await _touch_heartbeat(db, sim)
                     if isinstance(turn_result.get("turn_wall_time_ms"), (int, float)):
                         turn_wall_times_ms.append(float(turn_result["turn_wall_time_ms"]))
                     pending_turn_writes += 1
-                    # Batch commit every N turns to reduce write latency at high scales.
-                    if pending_turn_writes >= commit_interval:
-                        await db.commit()
-                        pending_turn_writes = 0
+                    # Commit each turn so last_heartbeat_at is visible to startup reapers
+                    # on other Cloud Run instances (lease-based recovery).
+                    await db.commit()
+                    pending_turn_writes = 0
 
                     progress_pct = 25 + int((turn_result["turn"] / sim.max_turns) * 55)
                     _emit_turn_update(
@@ -333,10 +333,19 @@ async def _update_status(db, sim, status):
     from models.simulation import SimulationStatus
     from datetime import datetime, timezone
 
+    now = datetime.now(timezone.utc)
     sim.status = status
+    sim.last_heartbeat_at = now
     if status == SimulationStatus.RUNNING:
-        sim.started_at = datetime.now(timezone.utc)
+        sim.started_at = now
     await db.commit()
+
+
+async def _touch_heartbeat(db, sim):
+    from datetime import datetime, timezone
+
+    sim.last_heartbeat_at = datetime.now(timezone.utc)
+    # Caller decides whether to commit (batched with turn writes).
 
 
 def _emit_progress(simulation_id: str, message: str, progress: int, report_id: str = None):

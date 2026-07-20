@@ -12,6 +12,11 @@ import { SimulationActivityLog } from "@/components/simulation/SimulationActivit
 import { SimulationProgressBar } from "@/components/simulation/SimulationProgressBar";
 import { LiveEvent, WebSocketMessage } from "@/lib/types";
 import { simulationUiFromStatus } from "@/lib/simulationStatus";
+import {
+  FAILED_DIALOG_CONFIRM_MS,
+  shouldOpenFailedDialogAfterConfirm,
+  shouldScheduleFailedConfirm,
+} from "@/lib/failedDialogHysteresis";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -123,10 +128,22 @@ export default function SimulationPage() {
   }, [simulation, notifyEnabled]);
 
   useEffect(() => {
-    if (simulation?.status === "failed" && !failedDialogDismissed.current) {
-      setFailedDialogOpen(true);
+    if (!shouldScheduleFailedConfirm(simulation?.status) || failedDialogDismissed.current) {
+      return;
     }
-  }, [simulation?.status]);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const latest = await refresh();
+        if (
+          shouldOpenFailedDialogAfterConfirm(latest?.status) &&
+          !failedDialogDismissed.current
+        ) {
+          setFailedDialogOpen(true);
+        }
+      })();
+    }, FAILED_DIALOG_CONFIRM_MS);
+    return () => window.clearTimeout(timer);
+  }, [simulation?.status, refresh]);
 
   useEffect(() => {
     if (!simulation) return;

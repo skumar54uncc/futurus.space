@@ -124,6 +124,10 @@ export interface ViabilitySummary {
   will_it_work: string;
   what_could_go_wrong: string;
   what_would_help: string;
+  /** "llm" when narrative came from the report agent; "heuristic" when metrics-only fallback. */
+  narrative_source?: string | null;
+  /** TimesFM/MIRAI caution flags — informational, not a hard failure. */
+  validation_caveats?: string[] | null;
 }
 
 export interface Citation {

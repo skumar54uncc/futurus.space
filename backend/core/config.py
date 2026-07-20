@@ -116,7 +116,11 @@ class Settings(BaseSettings):
     llm_model_tier2: str = "gpt-4o-mini"
 
     # ── Multi-provider LLM keys ───────────────────────────────────────────────
-    groq_api_keys: str = ""          # comma-separated list of up to 7 keys
+    # Prefer GROQ_API_KEYS (comma-separated). GROQ_API_KEY (singular) is also accepted.
+    groq_api_keys: str = Field(
+        default="",
+        validation_alias=AliasChoices("GROQ_API_KEYS", "GROQ_API_KEY"),
+    )
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
 

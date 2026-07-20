@@ -93,6 +93,26 @@ def _merge_viability_summary(llm_part: object, summary: dict) -> dict:
     return base
 
 
+def _attach_validation_caveats(viability: dict, validation: dict) -> dict:
+    """Surface TimesFM/MIRAI flags as caveats — never as a narrative failure."""
+    flags = validation.get("warning_flags") or []
+    if not flags:
+        return viability
+    viability["validation_caveats"] = list(flags)
+    # Soft note so founders see statistical caution without replacing the verdict.
+    caveat_line = (
+        "Statistical/macro check note: "
+        + "; ".join(str(f) for f in flags)
+        + "."
+    )
+    existing = (viability.get("what_could_go_wrong") or "").strip()
+    if caveat_line not in existing:
+        viability["what_could_go_wrong"] = (
+            f"{existing} {caveat_line}".strip() if existing else caveat_line
+        )
+    return viability
+
+
 async def generate_report(
     simulation: Simulation, events: list[SimulationEvent], db: AsyncSession
 ) -> Report:
@@ -117,6 +137,7 @@ async def generate_report(
     citations = await fetch_industry_citations(simulation, simulation_mode=True)
     qualitative = await _run_report_agent(simulation, metrics, validation, events, citations)
     viability = _merge_viability_summary(qualitative.get("viability_summary"), metrics["summary"])
+    viability["narrative_source"] = qualitative.get("narrative_source") or "llm"
     
     # Store comprehensive validation results
     viability["statistical_validation"] = validation.get("timesfm", {})
@@ -124,14 +145,7 @@ async def generate_report(
     viability["macro_context"] = validation.get("macro_context", {})
     viability["forecast_cache"] = validation.get("forecast_cache", {})
     viability["composite_validation_risk"] = validation.get("composite_risk", "low")
-    
-    # Add composite warnings to viability summary
-    if validation.get("warning_flags"):
-        existing_risks = viability.get("what_could_go_wrong", "")
-        new_warnings = "; ".join(validation["warning_flags"])
-        viability["what_could_go_wrong"] = (
-            f"{existing_risks} Statistical/macro validation flagged: {new_warnings}."
-        ).strip()
+    viability = _attach_validation_caveats(viability, validation)
 
     report = Report(
         id=uuid.uuid4(),
@@ -410,33 +424,32 @@ IMPORTANT:
         content = await call_llm(
             messages=[{"role": "user", "content": prompt}],
             agent_tier=1,
-            max_tokens=4000,
+            # Cap output so Fireworks/Groq finish under gateway timeouts more reliably.
+            max_tokens=2500,
             temperature=0.2,
             json_mode=True,
             read_timeout=40.0,
             max_provider_attempts=4,
         )
         coerced = coerce_llm_json_text(content)
-        return json.loads(coerced)
+        parsed = json.loads(coerced)
+        if isinstance(parsed, dict):
+            parsed["narrative_source"] = "llm"
+            return parsed
+        raise ValueError("report agent returned non-object JSON")
     except Exception as exc:
         logger.exception(
             "report_agent_qualitative_failed",
             simulation_id=str(simulation.id),
             error=str(exc),
         )
+        # Empty viability fields → _merge_viability_summary keeps metrics heuristics.
+        # No "Analysis unavailable" / error insights → frontend must not treat as hard failure.
         return {
-            "viability_summary": {
-                "verdict_label": "unclear",
-                "headline": "We could not finish the written analysis for this run.",
-                "will_it_work": (
-                    "The numbers below still reflect your simulation. The AI step that writes the narrative did not complete — "
-                    "often a temporary API or quota issue."
-                ),
-                "what_could_go_wrong": "Without the full narrative, rely on the metrics and charts, or run a new simulation.",
-                "what_would_help": "Try again later or ensure backup LLM keys (e.g. Groq) are configured on the server.",
-            },
+            "narrative_source": "heuristic",
+            "viability_summary": {},
             "failure_timeline": [],
-            "risk_matrix": [{"risk": "Analysis unavailable", "probability": "medium", "impact": "medium", "mitigation": "Retry report generation"}],
+            "risk_matrix": [],
             "pivot_suggestions": [],
-            "key_insights": [{"insight": "Report generation encountered an error", "supporting_evidence": "N/A", "actionability": "Re-run the simulation"}],
+            "key_insights": [],
         }

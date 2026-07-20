@@ -85,29 +85,35 @@ async def _recover_stale_queued_simulations() -> None:
     """
     On startup, mark abandoned simulations FAILED so the dashboard does not spin forever.
 
-    Cloud Run + inline workers: NEVER fail active (RUNNING / building / report) sims on
-    startup. A new instance cold-start or second replica would otherwise kill a sim that
-    is still executing on another instance — or kill a sim whose instance was recycled
-    while the row is still "running". Only expire very old QUEUED rows (never picked up).
+    Cloud Run + inline workers: reap by *lease*, not by created_at alone.
+    A healthy long-running sim keeps last_heartbeat_at fresh and survives cold starts
+    on other instances. A dead worker stops heartbeating and is reaped after LEASE_SECONDS.
 
     Celery mode: fail any active status immediately (worker process is gone).
     """
     from datetime import datetime, timedelta, timezone
 
     from models.simulation import SimulationStatus
-    from sqlalchemy import update
+    from services.simulation_recovery import (
+        ACTIVE_STATUSES,
+        LEASE_SECONDS,
+        QUEUED_MAX_AGE,
+    )
+    from sqlalchemy import func, update
 
     async with AsyncSessionLocal() as db:
         from models.simulation import Simulation
 
         if settings.simulation_worker_inline:
-            # Cloud Run / inline: only clear abandoned queue entries (not in-flight work).
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=6)
+            now = datetime.now(timezone.utc)
+            queued_cutoff = now - QUEUED_MAX_AGE
+            lease_cutoff = now - timedelta(seconds=LEASE_SECONDS)
+
             result = await db.execute(
                 update(Simulation)
                 .where(
                     Simulation.status == SimulationStatus.QUEUED,
-                    Simulation.created_at < cutoff,
+                    Simulation.created_at < queued_cutoff,
                 )
                 .values(
                     status=SimulationStatus.FAILED,
@@ -118,24 +124,22 @@ async def _recover_stale_queued_simulations() -> None:
                 )
                 .returning(Simulation.id)
             )
-            # Separately expire clearly-dead in-flight runs (instance died hours ago).
+            # Coalesce heartbeat → started_at → created_at so pre-migration rows still reap.
+            effective_hb = func.coalesce(
+                Simulation.last_heartbeat_at,
+                Simulation.started_at,
+                Simulation.created_at,
+            )
             stale_active = await db.execute(
                 update(Simulation)
                 .where(
-                    Simulation.status.in_(
-                        (
-                            SimulationStatus.BUILDING_SEED,
-                            SimulationStatus.GENERATING_PERSONAS,
-                            SimulationStatus.RUNNING,
-                            SimulationStatus.GENERATING_REPORT,
-                        )
-                    ),
-                    Simulation.created_at < cutoff,
+                    Simulation.status.in_(ACTIVE_STATUSES),
+                    effective_hb < lease_cutoff,
                 )
                 .values(
                     status=SimulationStatus.FAILED,
                     error_message=(
-                        "Run did not finish within 6 hours (likely instance recycle). "
+                        "Run lost its worker lease (no heartbeat). "
                         "Please start a new simulation."
                     ),
                 )
@@ -148,7 +152,8 @@ async def _recover_stale_queued_simulations() -> None:
                     "stale_simulations_terminated_on_startup",
                     count=len(recovered),
                     ids=[str(r[0]) for r in recovered],
-                    mode="inline_grace_6h",
+                    mode="inline_lease",
+                    lease_seconds=LEASE_SECONDS,
                 )
             return
 
@@ -206,6 +211,7 @@ async def lifespan(app: FastAPI):
     _SAFE_MIGRATIONS = [
         "ALTER TABLE reports ADD COLUMN IF NOT EXISTS citations JSONB DEFAULT '[]'",
         "ALTER TABLE simulations ADD COLUMN IF NOT EXISTS llm_usage JSONB DEFAULT NULL",
+        "ALTER TABLE simulations ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ DEFAULT NULL",
     ]
     async with engine.begin() as conn:
         for stmt in _SAFE_MIGRATIONS:

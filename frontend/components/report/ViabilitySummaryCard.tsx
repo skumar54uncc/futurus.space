@@ -1,20 +1,36 @@
 "use client";
 
 import type { Report, ViabilitySummary } from "@/lib/types";
+import {
+  formatVerdictBadgeLabel,
+  looksLikePoisonedUnclearVerdict,
+  shouldShowNarrativeGapNote,
+} from "@/lib/reportNarrative";
 import { cn } from "@/lib/utils";
 
 function normalizeViability(report: Report): ViabilitySummary {
   const v = report.viability_summary;
-  if (v && typeof v.headline === "string" && typeof v.will_it_work === "string") {
+  if (
+    v &&
+    typeof v.headline === "string" &&
+    typeof v.will_it_work === "string" &&
+    !looksLikePoisonedUnclearVerdict(v)
+  ) {
     return {
       verdict_label: typeof v.verdict_label === "string" ? v.verdict_label : "mixed",
       headline: v.headline,
       will_it_work: v.will_it_work,
       what_could_go_wrong: typeof v.what_could_go_wrong === "string" ? v.what_could_go_wrong : "",
       what_would_help: typeof v.what_would_help === "string" ? v.what_would_help : "",
+      narrative_source: v.narrative_source,
+      validation_caveats: v.validation_caveats,
     };
   }
-  return deriveViabilityFromMetrics(report);
+  return {
+    ...deriveViabilityFromMetrics(report),
+    narrative_source: v?.narrative_source ?? "heuristic",
+    validation_caveats: v?.validation_caveats,
+  };
 }
 
 function deriveViabilityFromMetrics(report: Report): ViabilitySummary {
@@ -69,8 +85,8 @@ const verdictStyles: Record<string, { border: string; badge: string; badgeText: 
     badgeText: "text-rose-300",
   },
   unclear: {
-    border: "border-amber-500/35",
-    badge: "bg-amber-500/15",
+    border: "border-amber-500/30",
+    badge: "bg-amber-500/12",
     badgeText: "text-amber-200",
   },
   mixed: {
@@ -92,18 +108,10 @@ function deriveYesNoSplit(report: Report): { yes: number; no: number } {
   return { yes, no: 100 - yes };
 }
 
-function verdictBadgeLabel(label: string, report: Report): string {
-  const split = deriveYesNoSplit(report);
-  const l = label.toLowerCase();
-  if (l === "promising") return `Leaning yes (${split.yes}% / ${split.no}%)`;
-  if (l === "struggling") return `Leaning no (${split.yes}% / ${split.no}%)`;
-  if (l === "unclear") return `Incomplete analysis (${split.yes}% / ${split.no}%)`;
-  return `Yes ${split.yes}% / No ${split.no}%`;
-}
-
 export function ViabilitySummaryCard({ report }: { report: Report }) {
   const v = normalizeViability(report);
   const style = verdictStyles[v.verdict_label.toLowerCase()] ?? verdictStyles.mixed;
+  const showGapNote = shouldShowNarrativeGapNote(report) || looksLikePoisonedUnclearVerdict(v);
 
   return (
     <section
@@ -124,9 +132,15 @@ export function ViabilitySummaryCard({ report }: { report: Report }) {
             style.badgeText
           )}
         >
-          {verdictBadgeLabel(v.verdict_label, report)}
+          {formatVerdictBadgeLabel(v.verdict_label, deriveYesNoSplit(report))}
         </span>
       </div>
+      {showGapNote ? (
+        <p className="mb-3 text-xs text-[--text-tertiary] leading-relaxed">
+          Charts and numbers are from your simulation. Written risks and insights used a metrics-based summary
+          because the AI narrative step didn&apos;t finish — you can still explore results with Ask below.
+        </p>
+      ) : null}
       <p className="text-base text-white font-medium leading-snug mb-4">{v.headline}</p>
       <div className="space-y-4 text-sm text-[--text-secondary] leading-relaxed">
         <div>

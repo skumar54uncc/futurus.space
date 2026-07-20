@@ -61,6 +61,8 @@ class Simulation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Worker lease: touched on status changes and turns. Startup reaps only expired leases.
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     report: Mapped["Report"] = relationship("Report", back_populates="simulation", uselist=False)
     events: Mapped[list["SimulationEvent"]] = relationship("SimulationEvent", back_populates="simulation")

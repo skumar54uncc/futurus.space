@@ -8,9 +8,21 @@ Do not put real API keys in this file or in `.env.example`. Secrets go only in g
 
 1. **Key rotated** — old Fireworks key revoked; new key only in Cloud Run env + gitignored `.env`.
 2. **DigitalOcean destroyed** — App Platform app + DO Redis/DB/Gradient gone; billing forecast ~$0.
-3. **Live Cloud Run runs current git** — redeployed from latest `master` with `--no-cpu-throttling --cpu-boost`.
+3. **Live Cloud Run runs current git** — redeployed from latest `master` (or merged audit branch) with `--no-cpu-throttling --cpu-boost`.
 
 GitHub push alone does **not** update Cloud Run.
+
+### After merging `chore/audit-and-fix`
+
+Redeploy backend so these land in production:
+
+- Report narrative LLM failure → metrics heuristic (no scary “broken analysis”)
+- Simulation `last_heartbeat_at` lease recovery (no false mid-run FAILED from cold start)
+- Failed-dialog hysteresis on the simulation page
+
+Frontend (Vercel) auto-deploys on push if connected; backend needs the `gcloud` redeploy below.
+
+Also confirm Cloud Run has **`GROQ_API_KEYS`** (plural) or **`GROQ_API_KEY`** (singular — both work in code). Wrong name = Fireworks-only with no fallback.
 
 ### Cloud Run honesty (interview line)
 
@@ -51,7 +63,7 @@ Platform allows public TCP; FastAPI Clerk gates data routes. Public by design (r
    - `FIREWORKS_API_KEY`
    - `FIREWORKS_BASE_URL=https://api.fireworks.ai/inference/v1`
    - `FIREWORKS_MODEL=accounts/fireworks/models/deepseek-v4-flash`
-4. Optional free fallback: `GROQ_API_KEYS` (check Groq console: free limits are **per org**, not per key).
+4. Optional free fallback: `GROQ_API_KEYS` (comma-separated) or `GROQ_API_KEY` (singular). Check Groq console: free limits are **per org**, not per key.
 
 ---
 
