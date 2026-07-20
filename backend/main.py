@@ -85,29 +85,82 @@ async def _recover_stale_queued_simulations() -> None:
     """
     On startup, mark abandoned simulations FAILED so the dashboard does not spin forever.
 
-    Cloud Run / inline workers: a new revision or cold start must NOT kill sims that are
-    still running on another instance. Only expire runs older than a grace window.
+    Cloud Run + inline workers: NEVER fail active (RUNNING / building / report) sims on
+    startup. A new instance cold-start or second replica would otherwise kill a sim that
+    is still executing on another instance — or kill a sim whose instance was recycled
+    while the row is still "running". Only expire very old QUEUED rows (never picked up).
+
+    Celery mode: fail any active status immediately (worker process is gone).
     """
     from datetime import datetime, timedelta, timezone
 
     from models.simulation import SimulationStatus
     from sqlalchemy import update
 
-    _STALE_STATUSES = (
-        SimulationStatus.QUEUED,
-        SimulationStatus.BUILDING_SEED,
-        SimulationStatus.GENERATING_PERSONAS,
-        SimulationStatus.RUNNING,
-        SimulationStatus.GENERATING_REPORT,
-    )
-    # Inline (Cloud Run): 2h grace — long sims + no Celery. Celery workers: fail immediately.
-    grace = timedelta(hours=2) if settings.simulation_worker_inline else timedelta(seconds=0)
-    cutoff = datetime.now(timezone.utc) - grace
-
     async with AsyncSessionLocal() as db:
         from models.simulation import Simulation
 
-        stmt = (
+        if settings.simulation_worker_inline:
+            # Cloud Run / inline: only clear abandoned queue entries (not in-flight work).
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=6)
+            result = await db.execute(
+                update(Simulation)
+                .where(
+                    Simulation.status == SimulationStatus.QUEUED,
+                    Simulation.created_at < cutoff,
+                )
+                .values(
+                    status=SimulationStatus.FAILED,
+                    error_message=(
+                        "Run was stuck in queue too long and was cleared. "
+                        "Please start a new simulation."
+                    ),
+                )
+                .returning(Simulation.id)
+            )
+            # Separately expire clearly-dead in-flight runs (instance died hours ago).
+            stale_active = await db.execute(
+                update(Simulation)
+                .where(
+                    Simulation.status.in_(
+                        (
+                            SimulationStatus.BUILDING_SEED,
+                            SimulationStatus.GENERATING_PERSONAS,
+                            SimulationStatus.RUNNING,
+                            SimulationStatus.GENERATING_REPORT,
+                        )
+                    ),
+                    Simulation.created_at < cutoff,
+                )
+                .values(
+                    status=SimulationStatus.FAILED,
+                    error_message=(
+                        "Run did not finish within 6 hours (likely instance recycle). "
+                        "Please start a new simulation."
+                    ),
+                )
+                .returning(Simulation.id)
+            )
+            recovered = list(result.fetchall()) + list(stale_active.fetchall())
+            await db.commit()
+            if recovered:
+                logger.warning(
+                    "stale_simulations_terminated_on_startup",
+                    count=len(recovered),
+                    ids=[str(r[0]) for r in recovered],
+                    mode="inline_grace_6h",
+                )
+            return
+
+        # Celery / dedicated worker: prior process is gone — fail all active.
+        _STALE_STATUSES = (
+            SimulationStatus.QUEUED,
+            SimulationStatus.BUILDING_SEED,
+            SimulationStatus.GENERATING_PERSONAS,
+            SimulationStatus.RUNNING,
+            SimulationStatus.GENERATING_REPORT,
+        )
+        result = await db.execute(
             update(Simulation)
             .where(Simulation.status.in_(_STALE_STATUSES))
             .values(
@@ -116,10 +169,6 @@ async def _recover_stale_queued_simulations() -> None:
             )
             .returning(Simulation.id)
         )
-        if grace.total_seconds() > 0:
-            stmt = stmt.where(Simulation.created_at < cutoff)
-
-        result = await db.execute(stmt)
         recovered = result.fetchall()
         await db.commit()
         if recovered:
@@ -127,7 +176,7 @@ async def _recover_stale_queued_simulations() -> None:
                 "stale_simulations_terminated_on_startup",
                 count=len(recovered),
                 ids=[str(r[0]) for r in recovered],
-                grace_hours=grace.total_seconds() / 3600.0,
+                mode="celery_immediate",
             )
 
 
