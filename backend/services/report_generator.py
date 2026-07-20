@@ -93,6 +93,170 @@ def _merge_viability_summary(llm_part: object, summary: dict) -> dict:
     return base
 
 
+def _heuristic_qualitative_sections(
+    metrics: dict,
+    events: list | None = None,
+) -> dict:
+    """
+    Metrics/event-based stand-ins for LLM narrative sections.
+    Keeps Failure timeline / Risk / Pivots / Insights visible when call_llm fails.
+    """
+    summary = metrics.get("summary") or {}
+    personas = metrics.get("persona_breakdown") or []
+    ar = float(summary.get("adoption_rate", 0) or 0)
+    cr = float(summary.get("churn_rate", 0) or 0)
+    viral = float(summary.get("viral_coefficient", 0) or 0)
+    adopters = int(summary.get("total_adopters", 0) or 0)
+
+    # Weakest / strongest segments by adoption when available
+    sorted_personas = sorted(
+        [p for p in personas if isinstance(p, dict)],
+        key=lambda p: float(p.get("adoption_rate", 0) or 0),
+    )
+    weakest = sorted_personas[0] if sorted_personas else None
+    strongest = sorted_personas[-1] if sorted_personas else None
+    weak_name = (weakest.get("segment") or weakest.get("persona") or "a weaker segment") if weakest else "some segments"
+    strong_name = (strongest.get("segment") or strongest.get("persona") or "early adopters") if strongest else "engaged segments"
+
+    failure_timeline: list[dict] = []
+    # Prefer real churn/negative events from the run
+    for ev in events or []:
+        et = getattr(ev, "event_type", None) or (ev.get("event_type") if isinstance(ev, dict) else None)
+        if et not in ("churned", "complained", "rejected", "ignored"):
+            continue
+        turn = getattr(ev, "turn", None) if not isinstance(ev, dict) else ev.get("turn")
+        seg = getattr(ev, "agent_segment", None) if not isinstance(ev, dict) else ev.get("segment")
+        desc = getattr(ev, "event_description", None) if not isinstance(ev, dict) else ev.get("description")
+        failure_timeline.append(
+            {
+                "turn": int(turn or 0),
+                "month_equivalent": round(float(turn or 0) / 4.0, 1),
+                "event": (desc or f"Agents {et} during the run.").strip(),
+                "impact_level": "high" if et == "churned" else "medium",
+                "affected_segment": seg or "unknown",
+            }
+        )
+        if len(failure_timeline) >= 5:
+            break
+
+    if len(failure_timeline) < 4:
+        # Synthetic milestones so the timeline section still renders
+        failure_timeline = [
+            {
+                "turn": 2,
+                "month_equivalent": 0.5,
+                "event": f"Early interest appeared, but only about {ar:.0f}% of agents adopted by the end of the run.",
+                "impact_level": "medium" if ar < 45 else "low",
+                "affected_segment": "overall",
+            },
+            {
+                "turn": 6,
+                "month_equivalent": 1.5,
+                "event": f"Churn relative to adopters reached roughly {cr:.0f}% — retention friction showed up mid-run.",
+                "impact_level": "high" if cr >= 40 else "medium",
+                "affected_segment": weak_name,
+            },
+            {
+                "turn": 12,
+                "month_equivalent": 3.0,
+                "event": f"Referral activity stayed limited (viral coefficient ~{viral:.2f}); growth leaned on direct adoption.",
+                "impact_level": "medium" if viral < 0.35 else "low",
+                "affected_segment": strong_name,
+            },
+            {
+                "turn": 18,
+                "month_equivalent": 4.5,
+                "event": f"By late turns, about {adopters} adopters remained the core signal — not a clean runaway success.",
+                "impact_level": "medium",
+                "affected_segment": "overall",
+            },
+        ]
+
+    risk_matrix = [
+        {
+            "risk": "Retention drop-off after trial",
+            "probability": "high" if cr >= 40 else "medium",
+            "impact": "high",
+            "mitigation": "Improve onboarding, support, and first-week value so adopters do not churn after trying the product.",
+        },
+        {
+            "risk": "Weak word-of-mouth / referral loop",
+            "probability": "high" if viral < 0.35 else "low",
+            "impact": "medium",
+            "mitigation": "Add a clear invite or share incentive once one segment shows durable usage.",
+        },
+        {
+            "risk": f"Uneven fit across segments ({weak_name})",
+            "probability": "medium",
+            "impact": "medium",
+            "mitigation": f"Narrow ICP toward {strong_name} before spending on broad acquisition.",
+        },
+        {
+            "risk": "Pricing or willingness-to-pay mismatch",
+            "probability": "medium",
+            "impact": "high",
+            "mitigation": "Run a small paid pilot or pricing interviews before locking the published price.",
+        },
+        {
+            "risk": "Optimistic simulation vs real-world friction",
+            "probability": "medium",
+            "impact": "medium",
+            "mitigation": "Treat this report as a stress test — validate the top risks with real customers next.",
+        },
+    ]
+
+    pivot_suggestions = [
+        {
+            "pivot": f"Focus GTM on {strong_name} first",
+            "rationale": "Concentrating on the segment that adopted most usually beats a broad launch when results are mixed.",
+            "confidence": "high" if strongest else "medium",
+            "evidence_from_simulation": f"Overall adoption ~{ar:.0f}%; strongest modeled segment: {strong_name}.",
+        },
+        {
+            "pivot": "Ship a retention-first MVP slice",
+            "rationale": "If churn is elevated, growth channels will burn cash until the core loop retains users.",
+            "confidence": "high" if cr >= 35 else "medium",
+            "evidence_from_simulation": f"Churn relative to adopters ~{cr:.0f}% with ~{adopters} adopters in-run.",
+        },
+        {
+            "pivot": "Test a simpler offer or lower commitment tier",
+            "rationale": "A lighter entry offer can raise trial-to-adopt conversion when hesitation shows up in the sim.",
+            "confidence": "medium",
+            "evidence_from_simulation": f"Adoption landed near {ar:.0f}% — not zero, not runaway.",
+        },
+    ]
+
+    key_insights = [
+        {
+            "insight": f"Adoption finished near {ar:.0f}% with churn around {cr:.0f}% of adopters.",
+            "supporting_evidence": f"Aggregate simulation metrics; ~{adopters} adopters counted.",
+            "actionability": "Decide whether retention or acquisition is the first bottleneck before scaling spend.",
+        },
+        {
+            "insight": f"Referral strength is limited (viral coefficient ~{viral:.2f}).",
+            "supporting_evidence": "Derived from referral vs adoption events in the run.",
+            "actionability": "Do not plan growth that depends on organic virality until one segment refers reliably.",
+        },
+        {
+            "insight": f"Segment skew: lean into {strong_name}; be cautious with {weak_name}.",
+            "supporting_evidence": "Persona breakdown from the simulation when available.",
+            "actionability": "Rewrite messaging and onboarding for the stronger segment first.",
+        },
+        {
+            "insight": "This narrative was built from simulation metrics (AI written sections did not finish).",
+            "supporting_evidence": "Heuristic fallback path after report-agent LLM failure.",
+            "actionability": "Use Ask the simulation analyst below, or re-run later for a richer AI narrative.",
+        },
+    ]
+
+    return {
+        "failure_timeline": failure_timeline,
+        "risk_matrix": risk_matrix,
+        "pivot_suggestions": pivot_suggestions,
+        "key_insights": key_insights,
+    }
+
+
 def _attach_validation_caveats(viability: dict, validation: dict) -> dict:
     """Surface TimesFM/MIRAI flags as caveats — never as a narrative failure."""
     flags = validation.get("warning_flags") or []
@@ -136,6 +300,12 @@ async def generate_report(
     
     citations = await fetch_industry_citations(simulation, simulation_mode=True)
     qualitative = await _run_report_agent(simulation, metrics, validation, events, citations)
+    # If LLM omitted sections (or failed earlier), fill from metrics so UI sections stay visible.
+    heuristic_sections = _heuristic_qualitative_sections(metrics, events)
+    for key in ("failure_timeline", "risk_matrix", "pivot_suggestions", "key_insights"):
+        if not qualitative.get(key):
+            qualitative[key] = heuristic_sections[key]
+
     viability = _merge_viability_summary(qualitative.get("viability_summary"), metrics["summary"])
     viability["narrative_source"] = qualitative.get("narrative_source") or "llm"
     
@@ -443,13 +613,11 @@ IMPORTANT:
             simulation_id=str(simulation.id),
             error=str(exc),
         )
-        # Empty viability fields → _merge_viability_summary keeps metrics heuristics.
-        # No "Analysis unavailable" / error insights → frontend must not treat as hard failure.
+        # Keep report sections populated from metrics so the UI still shows
+        # Failure timeline / Risk / Pivots / Insights (not blank).
+        heuristic_sections = _heuristic_qualitative_sections(metrics, events)
         return {
             "narrative_source": "heuristic",
             "viability_summary": {},
-            "failure_timeline": [],
-            "risk_matrix": [],
-            "pivot_suggestions": [],
-            "key_insights": [],
+            **heuristic_sections,
         }

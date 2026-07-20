@@ -32,6 +32,7 @@ async def test_report_agent_llm_failure_keeps_heuristic_viability():
     """
     Bug 1 regression: when call_llm fails, merged viability must stay the metrics
     heuristic — not verdict_label=unclear / 'could not finish written analysis'.
+    Sections (risks/insights/timeline/pivots) must still be populated so the UI shows them.
     """
     metrics = {
         "summary": {
@@ -40,7 +41,10 @@ async def test_report_agent_llm_failure_keeps_heuristic_viability():
             "viral_coefficient": 0.4,
             "total_adopters": 40,
         },
-        "persona_breakdown": [],
+        "persona_breakdown": [
+            {"segment": "budget buyers", "adoption_rate": 20},
+            {"segment": "power users", "adoption_rate": 70},
+        ],
     }
     validation = {"warning_flags": ["timesfm_high_divergence"], "composite_risk": "high"}
     heuristic = _heuristic_viability_summary(metrics["summary"])
@@ -61,7 +65,13 @@ async def test_report_agent_llm_failure_keeps_heuristic_viability():
     assert merged["headline"] == heuristic["headline"]
     assert merged["verdict_label"] != "unclear"
     assert "could not finish" not in merged["headline"].lower()
-    assert qualitative.get("key_insights") == []
-    assert qualitative.get("risk_matrix") == []
+
+    assert len(qualitative.get("risk_matrix") or []) >= 3
+    assert len(qualitative.get("key_insights") or []) >= 3
+    assert len(qualitative.get("failure_timeline") or []) >= 3
+    assert len(qualitative.get("pivot_suggestions") or []) >= 2
     insights = qualitative.get("key_insights") or []
     assert not any("encountered an error" in (i.get("insight") or "").lower() for i in insights)
+    assert not any(
+        (r.get("risk") or "") == "Analysis unavailable" for r in (qualitative.get("risk_matrix") or [])
+    )
