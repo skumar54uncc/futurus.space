@@ -4,7 +4,32 @@ Do not put real API keys in this file or in `.env.example`. Secrets go only in g
 
 ---
 
-## 0. Stop DigitalOcean bills (do this first)
+## Done means (do not claim done until all three)
+
+1. **Key rotated** — old Fireworks key revoked; new key only in Cloud Run env + gitignored `.env`.
+2. **DigitalOcean destroyed** — App Platform app + DO Redis/DB/Gradient gone; billing forecast ~$0.
+3. **Live Cloud Run runs current git** — redeployed from latest `master` with `--no-cpu-throttling --cpu-boost`.
+
+GitHub push alone does **not** update Cloud Run.
+
+### Cloud Run honesty (interview line)
+
+`--no-cpu-throttling` + `--cpu-boost` is enough to **ship a portfolio demo**. Inline daemon-thread sims on scale-to-zero is an anti-pattern for production: instance recycle or request lifecycle can kill a long run. Upgrade path when it matters: Cloud Tasks, min-instances, or a small always-on worker. Ship now, document the limit, do not over-build today.
+
+### Per-simulation cost (Postgres)
+
+Each completed (or failed) run writes `simulations.actual_cost_usd` and `simulations.llm_usage` (JSON: providers, tokens, cached vs uncached, fallback_calls). Process-local `/api/admin/llm-status` usage is secondary and resets on cold start.
+
+```sql
+SELECT id, business_name, actual_cost_usd, llm_usage
+FROM simulations
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+### Auth note (Cloud Run `--allow-unauthenticated`)
+
+Platform allows public TCP; FastAPI Clerk gates data routes. Public by design (rate-limited): `GET /health`, `GET /api/ideas/`, `GET /api/reports/share/{token}`. Admin: `GET /api/admin/llm-status` requires `ADMIN_EMAIL` match or enterprise tier.
 
 1. Open [DigitalOcean Control Panel](https://cloud.digitalocean.com/).
 2. **Apps** → open `futurus-api` (or your App Platform app) → **Settings** → **Destroy App**. Confirm.

@@ -156,6 +156,7 @@ async def lifespan(app: FastAPI):
     from sqlalchemy import text
     _SAFE_MIGRATIONS = [
         "ALTER TABLE reports ADD COLUMN IF NOT EXISTS citations JSONB DEFAULT '[]'",
+        "ALTER TABLE simulations ADD COLUMN IF NOT EXISTS llm_usage JSONB DEFAULT NULL",
     ]
     async with engine.begin() as conn:
         for stmt in _SAFE_MIGRATIONS:

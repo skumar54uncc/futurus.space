@@ -107,6 +107,10 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
                 5,
             )
 
+            from services.cost_tracker import begin_simulation_tracking, persist_simulation_llm_usage
+
+            begin_simulation_tracking(str(sim.id))
+
             request = SimulationCreateRequest(
                 business_name=sim.business_name,
                 idea_description=sim.idea_description,
@@ -257,6 +261,11 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             except Exception:
                 logger.warning("report_run_diagnostics_attach_failed", simulation_id=simulation_id)
 
+            try:
+                await persist_simulation_llm_usage(sim.id, db)
+            except Exception:
+                logger.warning("simulation_llm_usage_persist_failed", simulation_id=simulation_id)
+
             sim.status = SimulationStatus.COMPLETED
             sim.completed_at = datetime.now(timezone.utc)
             await db.commit()
@@ -306,6 +315,12 @@ async def _run_simulation_async(simulation_id: str, task: Task | None):
             if not s:
                 logger.info("simulation_gone_after_error", simulation_id=simulation_id)
                 return
+            try:
+                from services.cost_tracker import persist_simulation_llm_usage
+
+                await persist_simulation_llm_usage(s.id, db)
+            except Exception:
+                logger.warning("simulation_llm_usage_persist_failed_on_error", simulation_id=simulation_id)
             s.status = SimulationStatus.FAILED
             s.error_message = user_facing_simulation_error(e)
             await db.commit()

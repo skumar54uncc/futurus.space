@@ -536,6 +536,16 @@ async def _call_provider(
                 cached_tokens=cached_tokens,
                 estimated_cost_usd=est,
             )
+            if not provider.name.startswith("fireworks"):
+                logger.warning(
+                    "llm_fallback_provider_used",
+                    provider=provider.name,
+                    model=provider.model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    estimated_cost_usd=est,
+                    hint="Primary Fireworks path did not serve this call — check quota, errors, or key.",
+                )
             return content
 
         except (httpx.TimeoutException, httpx.ConnectError) as exc:

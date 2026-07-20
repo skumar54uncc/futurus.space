@@ -52,6 +52,8 @@ class Simulation(Base):
     agents_active: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     estimated_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     actual_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Per-run LLM meter: providers, tokens, cached vs uncached, estimated USD (persisted for interviews).
+    llm_usage: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     notify_on_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
