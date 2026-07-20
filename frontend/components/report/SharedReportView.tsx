@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { Report } from "@/lib/types";
+import { withFilledReportSections } from "@/lib/reportSectionFallbacks";
 import { Logo } from "@/components/ui/Logo";
 import { ReportShell } from "@/components/report/ReportShell";
 import { SummaryCards } from "@/components/report/SummaryCards";
@@ -18,7 +19,8 @@ const AdoptionCurveChart = dynamic(
   { loading: () => <ReportChartSkeleton />, ssr: false }
 );
 
-export function SharedReportView({ report }: { report: Report }) {
+export function SharedReportView({ report: rawReport }: { report: Report }) {
+  const report = withFilledReportSections(rawReport);
   return (
     <div className="min-h-dvh bg-void">
       <header className="border-b border-[--border-subtle] px-6 py-4 flex items-center justify-between gap-4">

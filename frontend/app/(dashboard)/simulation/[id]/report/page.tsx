@@ -16,6 +16,7 @@ import { PublishIdeaButton } from "@/components/report/PublishIdeaButton";
 import { ReportSkeleton, ReportChartSkeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useReport } from "@/hooks/useReport";
+import { withFilledReportSections } from "@/lib/reportSectionFallbacks";
 
 const AdoptionCurveChart = dynamic(
   () => import("@/components/report/AdoptionCurveChart").then((m) => m.AdoptionCurveChart),
@@ -25,7 +26,8 @@ const AdoptionCurveChart = dynamic(
 export default function ReportPage() {
   const params = useParams();
   const simulationId = params.id as string;
-  const { report, simulation, loading, error } = useReport(simulationId);
+  const { report: rawReport, simulation, loading, error } = useReport(simulationId);
+  const report = rawReport ? withFilledReportSections(rawReport) : null;
 
   if (loading) {
     return (

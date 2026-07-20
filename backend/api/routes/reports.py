@@ -24,7 +24,27 @@ _PRESIGN_SHARE_SECONDS = 86_400
 
 
 async def _report_response_presigned(report: Report, *, ttl: int) -> ReportResponse:
+    # Old rows may have empty narrative sections after LLM failure; fill from metrics on read.
+    from services.report_generator import _heuristic_qualitative_sections
+
+    metrics = {
+        "summary": report.summary_metrics or {},
+        "persona_breakdown": report.persona_breakdown or [],
+    }
+    filled = _heuristic_qualitative_sections(metrics, events=[])
+    updates: dict = {}
+    if not report.failure_timeline:
+        updates["failure_timeline"] = filled["failure_timeline"]
+    if not report.risk_matrix:
+        updates["risk_matrix"] = filled["risk_matrix"]
+    if not report.pivot_suggestions:
+        updates["pivot_suggestions"] = filled["pivot_suggestions"]
+    if not report.key_insights:
+        updates["key_insights"] = filled["key_insights"]
+
     base = ReportResponse.model_validate(report)
+    if updates:
+        base = base.model_copy(update=updates)
 
     async def _sign(url: str | None) -> str | None:
         if not url:
