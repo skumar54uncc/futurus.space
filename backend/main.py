@@ -37,8 +37,11 @@ else:
     )
 
 if settings.sentry_dsn:
+    import logging
+
     import sentry_sdk
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
     from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
     def _scrub_pii(event, hint):
@@ -56,6 +59,7 @@ if settings.sentry_dsn:
         integrations=[
             FastApiIntegration(transaction_style="endpoint"),
             SqlalchemyIntegration(),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
         ],
         traces_sample_rate=0.05,
         send_default_pii=False,
@@ -79,11 +83,13 @@ from models.user import User
 
 async def _recover_stale_queued_simulations() -> None:
     """
-    On startup, any simulation still in a queued/active status from a prior
-    server process is un-recoverable (its worker thread is dead).
-    Mark them FAILED immediately so they don't appear stuck in the dashboard
-    and don't keep polling the DB.
+    On startup, mark abandoned simulations FAILED so the dashboard does not spin forever.
+
+    Cloud Run / inline workers: a new revision or cold start must NOT kill sims that are
+    still running on another instance. Only expire runs older than a grace window.
     """
+    from datetime import datetime, timedelta, timezone
+
     from models.simulation import SimulationStatus
     from sqlalchemy import update
 
@@ -94,9 +100,14 @@ async def _recover_stale_queued_simulations() -> None:
         SimulationStatus.RUNNING,
         SimulationStatus.GENERATING_REPORT,
     )
+    # Inline (Cloud Run): 2h grace — long sims + no Celery. Celery workers: fail immediately.
+    grace = timedelta(hours=2) if settings.simulation_worker_inline else timedelta(seconds=0)
+    cutoff = datetime.now(timezone.utc) - grace
+
     async with AsyncSessionLocal() as db:
         from models.simulation import Simulation
-        result = await db.execute(
+
+        stmt = (
             update(Simulation)
             .where(Simulation.status.in_(_STALE_STATUSES))
             .values(
@@ -105,6 +116,10 @@ async def _recover_stale_queued_simulations() -> None:
             )
             .returning(Simulation.id)
         )
+        if grace.total_seconds() > 0:
+            stmt = stmt.where(Simulation.created_at < cutoff)
+
+        result = await db.execute(stmt)
         recovered = result.fetchall()
         await db.commit()
         if recovered:
@@ -112,6 +127,7 @@ async def _recover_stale_queued_simulations() -> None:
                 "stale_simulations_terminated_on_startup",
                 count=len(recovered),
                 ids=[str(r[0]) for r in recovered],
+                grace_hours=grace.total_seconds() / 3600.0,
             )
 
 
@@ -380,15 +396,28 @@ async def llm_status(
         raise HTTPException(status_code=403, detail="Admin access required")
 
     from services.llm_router import get_providers
+    from services.cost_tracker import get_usage_snapshot
+    from services.timesfm_client import is_remote_enabled
 
     rows = get_providers()
     return {
         "providers": [
             {
                 "name": x["name"],
+                "model": x.get("model"),
                 "available": x["available"],
                 "keys_count": len(x.get("keys", [])),
             }
             for x in rows
         ],
+        "usage": get_usage_snapshot(),
+        "validators": {
+            "timesfm_remote": is_remote_enabled(),
+            "timesfm_service_url_set": bool((settings.timesfm_service_url or "").strip()),
+            "tavily_set": bool((settings.tavily_api_key or "").strip()),
+            "note": (
+                "TimesFM uses HF Space when TIMESFM_SERVICE_URL is set; else heuristic. "
+                "MIRAI-lite uses Tavily when TAVILY_API_KEY is set; else default macro shocks."
+            ),
+        },
     }

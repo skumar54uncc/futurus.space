@@ -1,0 +1,44 @@
+# Cloud Run service template for Futurus API (inline simulations).
+# Apply after building/pushing an image, or use: gcloud run services replace deploy/cloudrun.yaml
+#
+# Replace PROJECT_ID, REGION, and IMAGE before apply.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: futurus-api
+  annotations:
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        # One long simulation at a time per instance is safer than stacking many.
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 1
+      timeoutSeconds: 3600
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/futurus/futurus-api:latest
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: FUTURUS_SIMULATION_WORKER_INLINE
+              value: "true"
+            - name: FUTURUS_RATE_LIMIT_STORAGE_URI
+              value: memory://
+            - name: PORT
+              value: "8080"
+            # Set secrets via Console or:
+            # gcloud run services update futurus-api --set-secrets=...
+            # Required at runtime (examples — use Secret Manager in production):
+            # DATABASE_URL, REDIS_URL, CLERK_SECRET_KEY, CLERK_JWT_AUDIENCE,
+            # FIREWORKS_API_KEY, GROQ_API_KEYS, BACKEND_URL, CORS_EXTRA_ORIGINS,
+            # TIMESFM_SERVICE_URL, ADMIN_EMAIL, MAX_COST_PER_SIMULATION_USD

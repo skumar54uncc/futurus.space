@@ -2,8 +2,8 @@
 Multi-provider LLM router with per-key rate tracking, rotation, and graceful fallback.
 
 Provider priority:
-  Tier 1 (quality): DigitalOcean Gradient (if MODEL_ACCESS_KEY set) → Groq 70b → Gemini → OpenRouter
-  Tier 2 (volume):  DO tier-2 model → Groq 8b → Groq 70b → Gemini
+  Tier 1 (quality): Fireworks DeepSeek V4 Flash (if FIREWORKS_API_KEY set) → Groq 70b → Gemini → OpenRouter
+  Tier 2 (volume):  Fireworks DeepSeek V4 Flash → Groq 8b → Groq 70b → Gemini
 
 Never exposes raw API keys in logs — only key_0, key_1, etc.
 """
@@ -309,45 +309,34 @@ def _build_chains() -> None:
         rpd_limit=200,
     )
 
-    do_key = (settings.digitalocean_model_access_key or "").strip()
-    do_tier1_list: list[Provider] = []
-    do_tier2_list: list[Provider] = []
-    if do_key:
-        do_base = settings.digitalocean_inference_base_url.rstrip("/")
-        m1 = (settings.llm_model_tier1 or "alibaba-qwen3-32b").strip()
-        m2 = (settings.llm_model_tier2 or m1).strip()
-        # Generous limits; DO bills per token — adjust if you hit HTTP 429s
-        do_tier1_list.append(
+    fireworks_key = (settings.fireworks_api_key or "").strip()
+    fireworks_list: list[Provider] = []
+    if fireworks_key:
+        fw_base = (settings.fireworks_base_url or "https://api.fireworks.ai/inference/v1").rstrip("/")
+        fw_model = (
+            settings.fireworks_model or "accounts/fireworks/models/deepseek-v4-flash"
+        ).strip()
+        # Paid serverless — generous RPM; tune down if you hit 429s under $5/mo cap
+        fireworks_list.append(
             Provider(
-                name="digitalocean_tier1",
-                base_url=do_base,
-                model=m1,
-                api_keys=[ApiKey(0, do_key, "digitalocean_tier1")],
-                rpm_limit=120,
-                rpd_limit=100_000,
-            )
-        )
-        do_tier2_list.append(
-            Provider(
-                name="digitalocean_tier2",
-                base_url=do_base,
-                model=m2,
-                api_keys=[ApiKey(0, do_key, "digitalocean_tier2")],
+                name="fireworks_deepseek",
+                base_url=fw_base,
+                model=fw_model,
+                api_keys=[ApiKey(0, fireworks_key, "fireworks_deepseek")],
                 rpm_limit=120,
                 rpd_limit=100_000,
             )
         )
         logger.info(
-            "llm_router_digitalocean_enabled",
-            base_url=do_base,
-            tier1_model=m1,
-            tier2_model=m2,
+            "llm_router_fireworks_enabled",
+            base_url=fw_base,
+            model=fw_model,
         )
 
-    # Tier 1: best quality (DO first when configured)
-    _tier1_chain = do_tier1_list + [groq_70b, gemini, openrouter]
-    # Tier 2: high volume
-    _tier2_chain = do_tier2_list + [groq_8b, groq_70b, gemini]
+    # Tier 1: Fireworks primary → Groq free fallback → optional Gemini/OpenRouter
+    _tier1_chain = fireworks_list + [groq_70b, gemini, openrouter]
+    # Tier 2: same Fireworks primary → Groq volume models
+    _tier2_chain = fireworks_list + [groq_8b, groq_70b, gemini]
     _built = True
 
 
@@ -370,7 +359,7 @@ def get_providers() -> list[dict]:
 def _extract_assistant_text(data: dict) -> str | None:
     """
     Normalize OpenAI-compatible chat completion payloads.
-    Some hosts (e.g. DigitalOcean / multi-modal adapters) return content as a list of parts
+    Some hosts / multi-modal adapters return content as a list of parts
     or omit string content when using alternate fields.
     """
     choices = data.get("choices")
@@ -413,10 +402,10 @@ def _extract_assistant_text(data: dict) -> str | None:
 
 def _use_openai_json_response_format(provider: Provider) -> bool:
     """
-    response_format: {type: json_object} is OpenAI-specific. DigitalOcean-hosted models
-    (Qwen, Llama, etc.) often return HTTP 500 when this field is sent — rely on prompt-only JSON instead.
+    response_format: {type: json_object} is widely supported on OpenAI-compatible APIs
+    (Fireworks, Groq). Keep this hook if a future provider rejects the field.
     """
-    return not provider.name.startswith("digitalocean")
+    return True
 
 
 async def _call_provider(
@@ -426,16 +415,18 @@ async def _call_provider(
     max_tokens: int,
     json_mode: bool,
     read_timeout: float = LLM_DEFAULT_READ_TIMEOUT,
+    *,
+    session_affinity: str | None = None,
 ) -> str:
     body: dict = {
         "model": provider.model,
         "messages": messages,
         "temperature": temperature,
+        "max_tokens": max_tokens,
     }
-    if provider.name.startswith("digitalocean"):
-        body["max_completion_tokens"] = max_tokens
-    else:
-        body["max_tokens"] = max_tokens
+    # Fireworks serverless prompt-cache stickiness (docs: user field or x-session-affinity)
+    if session_affinity and provider.name.startswith("fireworks"):
+        body["user"] = session_affinity
     if json_mode and _use_openai_json_response_format(provider):
         body["response_format"] = {"type": "json_object"}
 
@@ -458,6 +449,8 @@ async def _call_provider(
             "Authorization": f"Bearer {key.value}",
             "Content-Type": "application/json",
         }
+        if session_affinity and provider.name.startswith("fireworks"):
+            headers["x-session-affinity"] = session_affinity
         try:
             resp = await client.post(
                 f"{provider.base_url}/chat/completions",
@@ -504,11 +497,44 @@ async def _call_provider(
                 last_failure = f"{provider.name} {key.label}: empty response content"
                 continue
 
+            usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            prompt_tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+            completion_tokens = int(
+                usage.get("completion_tokens") or usage.get("output_tokens") or 0
+            )
+            details = usage.get("prompt_tokens_details")
+            cached_tokens = 0
+            if isinstance(details, dict):
+                cached_tokens = int(details.get("cached_tokens") or 0)
+            if not cached_tokens:
+                cached_tokens = int(
+                    usage.get("cached_tokens")
+                    or usage.get("prompt_cache_hit_tokens")
+                    or 0
+                )
+
+            try:
+                from services.cost_tracker import record_llm_usage
+
+                est = record_llm_usage(
+                    provider.name,
+                    provider.model,
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    cached_input_tokens=cached_tokens,
+                )
+            except Exception:
+                est = None
+
             logger.info(
                 "llm_call_ok",
                 provider=provider.name,
                 model=provider.model,
                 key=key.label,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cached_tokens=cached_tokens,
+                estimated_cost_usd=est,
             )
             return content
 
@@ -535,16 +561,18 @@ async def call_llm(
     *,
     read_timeout: float | None = None,
     max_provider_attempts: int | None = None,
+    session_affinity: str | None = None,
 ) -> str:
     """
     Route an LLM call through the appropriate provider chain.
 
-    agent_tier=1  → Groq 70b → Gemini → OpenRouter  (best quality)
-    agent_tier=2  → Groq 8b  → Groq 70b → Gemini    (high volume)
+    agent_tier=1  → Fireworks → Groq 70b → Gemini → OpenRouter
+    agent_tier=2  → Fireworks → Groq 8b  → Groq 70b → Gemini
     agent_tier=3  → raises CrowdAgentSkip immediately (no API call)
 
     max_provider_attempts limits how many providers are tried (stays under HTTP gateway timeouts).
     read_timeout sets per-request read seconds (default LLM_DEFAULT_READ_TIMEOUT).
+    session_affinity sticky-routes Fireworks serverless for prompt-cache hits (simulation id).
     """
     if agent_tier == 3:
         raise CrowdAgentSkip("Tier 3 agents use probabilistic logic")
@@ -564,7 +592,13 @@ async def call_llm(
         attempts += 1
         try:
             return await _call_provider(
-                provider, messages, temperature, max_tokens, json_mode, read_timeout=rt
+                provider,
+                messages,
+                temperature,
+                max_tokens,
+                json_mode,
+                read_timeout=rt,
+                session_affinity=session_affinity,
             )
         except AllProvidersExhausted as exc:
             last_failure = str(exc)
@@ -576,7 +610,7 @@ async def call_llm(
 
     raise AllProvidersExhausted(
         last_failure
-        or "All LLM providers failed. Check DigitalOcean inference (model id, key) or add GROQ_API_KEYS as fallback."
+        or "All LLM providers failed. Check FIREWORKS_API_KEY or add GROQ_API_KEYS as fallback."
     )
 
 

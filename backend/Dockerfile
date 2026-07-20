@@ -1,4 +1,4 @@
-# DigitalOcean App Platform / container deploys: build context must be backend/
+# Cloud Run / container deploys: build context must be backend/
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -19,8 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# App Platform and Railway inject PORT
+# Cloud Run injects PORT (default 8080)
 ENV PORT=8080
 EXPOSE 8080
 
+# Inline sims only on Cloud Run (no Celery worker). Keep request timeout high on the service.
 CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]

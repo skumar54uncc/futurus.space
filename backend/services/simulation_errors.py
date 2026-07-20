@@ -11,7 +11,7 @@ def user_facing_simulation_error(exc: BaseException) -> str:
     typ = type(exc).__name__.lower()
 
     if "empty or missing message.content" in raw or (
-        "message.content" in raw and "digitalocean" in low
+        "message.content" in raw and ("fireworks" in low or "digitalocean" in low)
     ):
         return (
             "The AI service returned an empty reply, so the simulation could not continue. "

@@ -1,3 +1,6 @@
+# DEPRECATED — DigitalOcean App Platform rollback reference only.
+# Prefer Cloud Run (see deploy/cloudrun*.* and MANUAL_STEPS.md). Do not use for new production.
+
 # Deploy Futurus API on DigitalOcean
 
 Frontend (Next.js) should stay on **Vercel** (root directory `frontend/`). This guide covers the **FastAPI backend** (`backend/`), **Managed PostgreSQL**, **Managed Redis**, and **DigitalOcean Gradient** inference.

@@ -48,7 +48,9 @@ class MiroFishAdapter:
                     or os.getenv("LLM_API_KEY", ""),
                     "llm_base_url": settings.openai_compatible_llm_base()
                     or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1"),
-                    "llm_model": os.getenv("LLM_MODEL_TIER2") or settings.llm_model_tier2,
+                    "llm_model": settings.openai_compatible_llm_model()
+                    or os.getenv("LLM_MODEL_TIER2")
+                    or settings.llm_model_tier2,
                     "zep_api_key": os.getenv("ZEP_API_KEY") or settings.zep_api_key,
                 },
             )
@@ -190,12 +192,21 @@ class MiroFishAdapter:
 
     @staticmethod
     async def _llm_archetype_decision(
-        representative: dict, group_size: int, turn: int, adoption_rate: float, tier: int
+        representative: dict,
+        group_size: int,
+        turn: int,
+        adoption_rate: float,
+        tier: int,
+        *,
+        session_affinity: str | None = None,
+        shared_market_context: str = "",
     ) -> dict:
         """
         LLM-powered decision for an archetype (segment group).
         Returns a probability distribution over actions for all agents in this archetype.
         Falls back to uniform distribution on any error.
+
+        Uses a stable system prefix (Fireworks prompt-cache friendly) + dynamic user tail.
         """
         from services.llm_router import (
             call_llm,
@@ -203,25 +214,32 @@ class MiroFishAdapter:
             AllProvidersExhausted,
         )
 
-        prompt = (
-            f"You represent an archetype of {group_size} consumers who share these traits.\n"
-            f"Segment: {representative['segment']}. Turn: {turn}/40.\n"
-            f"Market adoption so far: {adoption_rate:.0%}.\n"
-            f"Motivation: {representative.get('main_motivation', 'N/A')}.\n"
-            f"Objection: {representative.get('main_objection', 'N/A')}.\n"
-            f"Adopts when: {representative.get('trigger_to_adopt', 'N/A')}.\n"
-            "Given the current market state, return a JSON probability distribution "
-            "over possible actions. Probabilities must sum to 1.0.\n"
-            'Reply ONLY with JSON: {"adopted": 0.XX, "deferred": 0.XX, "rejected": 0.XX, "referred": 0.XX}'
+        system = (
+            "You are a market-simulation archetype engine for Futurus. "
+            "Output ONLY a JSON object with keys adopted, deferred, rejected, referred. "
+            "Values are probabilities that sum to 1.0. No markdown, no commentary.\n"
+            f"{shared_market_context}".strip()
+        )
+        user = (
+            f"Archetype size: {group_size}. Segment: {representative['segment']}. "
+            f"Turn: {turn}. Market adoption so far: {adoption_rate:.0%}. "
+            f"Motivation: {representative.get('main_motivation', 'N/A')}. "
+            f"Objection: {representative.get('main_objection', 'N/A')}. "
+            f"Adopts when: {representative.get('trigger_to_adopt', 'N/A')}. "
+            'Reply ONLY with JSON: {"adopted":0.xx,"deferred":0.xx,"rejected":0.xx,"referred":0.xx}'
         )
 
         try:
             content = await call_llm(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
                 agent_tier=tier,
                 temperature=0.85,
-                max_tokens=300,
+                max_tokens=100,
                 json_mode=True,
+                session_affinity=session_affinity,
             )
             return MiroFishAdapter._parse_distribution(content)
         except (CrowdAgentSkip, AllProvidersExhausted, Exception) as exc:
@@ -288,6 +306,15 @@ class MiroFishAdapter:
         adopted_agents: set[str] = set()
         churned_agents: set[str] = set()
 
+        # Stable prefix for Fireworks prompt caching across archetype calls in this run
+        seed_blurb = ""
+        if isinstance(self.seed, dict):
+            seed_blurb = str(self.seed.get("market_overview") or self.seed.get("summary") or "")[:800]
+        shared_market_context = (
+            f"Shared market context (stable): {seed_blurb}" if seed_blurb else ""
+        )
+        session_affinity = f"sim-{abs(hash(str(self.seed)[:200])) % 10_000_000}"
+
         # Build segment lookup for event emission
         segment_of: dict[str, str] = {p["name"]: p["segment"] for p in personas}
 
@@ -315,7 +342,13 @@ class MiroFishAdapter:
             if tier1_by_segment:
                 async def _t1_archetype_call(seg: str, agents: list[dict]) -> tuple[str, dict]:
                     dist = await self._llm_archetype_decision(
-                        agents[0], len(agents), turn, current_adoption_rate, tier=1
+                        agents[0],
+                        len(agents),
+                        turn,
+                        current_adoption_rate,
+                        tier=1,
+                        session_affinity=session_affinity,
+                        shared_market_context=shared_market_context,
                     )
                     return seg, dist
 
@@ -332,7 +365,13 @@ class MiroFishAdapter:
             if tier2_by_segment:
                 async def _t2_archetype_call(seg: str, agents: list[dict]) -> tuple[str, dict]:
                     dist = await self._llm_archetype_decision(
-                        agents[0], len(agents), turn, current_adoption_rate, tier=2
+                        agents[0],
+                        len(agents),
+                        turn,
+                        current_adoption_rate,
+                        tier=2,
+                        session_affinity=session_affinity,
+                        shared_market_context=shared_market_context,
                     )
                     return seg, dist
 

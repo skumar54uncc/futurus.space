@@ -1,5 +1,6 @@
-# DigitalOcean App Platform spec (template).
-# Replace YOUR_GITHUB_ORG/YOUR_REPO, branch, and env values. Apply via DO UI "App Spec" or doctl.
+# DEPRECATED — DigitalOcean App Platform rollback reference only.
+# Do not deploy from this file for new production. Prefer Oracle (docker-compose.prod.yml)
+# or another host. Kept so you can re-apply via doctl if you must roll back.
 #
 # doctl apps create --spec .do/app.yaml
 #

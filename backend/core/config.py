@@ -120,17 +120,19 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
 
-    # DigitalOcean Gradient serverless inference (OpenAI-compatible /v1/chat/completions)
-    digitalocean_model_access_key: str = Field(
+    # Fireworks (OpenAI-compatible) — DeepSeek V4 Flash primary
+    # Docs: https://api.fireworks.ai/inference/v1 ; model accounts/fireworks/models/deepseek-v4-flash
+    fireworks_api_key: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "DIGITALOCEAN_MODEL_ACCESS_KEY",
-            "MODEL_ACCESS_KEY",
-        ),
+        validation_alias=AliasChoices("FIREWORKS_API_KEY"),
     )
-    digitalocean_inference_base_url: str = Field(
-        default="https://inference.do-ai.run/v1",
-        validation_alias=AliasChoices("DIGITALOCEAN_INFERENCE_BASE_URL"),
+    fireworks_base_url: str = Field(
+        default="https://api.fireworks.ai/inference/v1",
+        validation_alias=AliasChoices("FIREWORKS_BASE_URL"),
+    )
+    fireworks_model: str = Field(
+        default="accounts/fireworks/models/deepseek-v4-flash",
+        validation_alias=AliasChoices("FIREWORKS_MODEL"),
     )
 
     # ── Agent tier config ─────────────────────────────────────────────────────
@@ -307,14 +309,20 @@ class Settings(BaseSettings):
         return self
 
     def openai_compatible_llm_key(self) -> str:
-        """Bearer token for OpenAI-compatible APIs (DO Gradient, OpenAI, Groq-style passthrough)."""
-        return (self.digitalocean_model_access_key or self.llm_api_key or "").strip()
+        """Bearer token for OpenAI-compatible APIs (Fireworks primary, then legacy LLM_API_KEY)."""
+        return (self.fireworks_api_key or self.llm_api_key or "").strip()
 
     def openai_compatible_llm_base(self) -> str:
         """Base URL without trailing slash (…/v1/chat/completions is appended by clients)."""
-        if (self.digitalocean_model_access_key or "").strip():
-            return self.digitalocean_inference_base_url.rstrip("/")
+        if (self.fireworks_api_key or "").strip():
+            return self.fireworks_base_url.rstrip("/")
         return (self.llm_base_url or "https://api.openai.com/v1").rstrip("/")
+
+    def openai_compatible_llm_model(self) -> str:
+        """Model id for MiroFish / passthrough clients when using Fireworks or legacy LLM_*."""
+        if (self.fireworks_api_key or "").strip():
+            return (self.fireworks_model or "accounts/fireworks/models/deepseek-v4-flash").strip()
+        return (self.llm_model_tier2 or self.llm_model_tier1 or "gpt-4o-mini").strip()
 
     @model_validator(mode="after")
     def validate_critical_settings(self) -> "Settings":
@@ -325,14 +333,14 @@ class Settings(BaseSettings):
                 errs.append("DATABASE_URL must be set")
             has_any_llm_key = (
                 (self.llm_api_key and len(self.llm_api_key) >= 8)
-                or bool((self.digitalocean_model_access_key or "").strip())
+                or bool((self.fireworks_api_key or "").strip())
                 or bool(self.groq_api_keys.strip())
                 or bool(self.gemini_api_key.strip())
                 or bool(self.openrouter_api_key.strip())
             )
             if not has_any_llm_key:
                 errs.append(
-                    "At least one LLM key must be set (MODEL_ACCESS_KEY / DIGITALOCEAN_MODEL_ACCESS_KEY, "
+                    "At least one LLM key must be set (FIREWORKS_API_KEY, "
                     "LLM_API_KEY, GROQ_API_KEYS, GEMINI_API_KEY, or OPENROUTER_API_KEY)"
                 )
             if not self.clerk_secret_key or len(self.clerk_secret_key) < 20:
